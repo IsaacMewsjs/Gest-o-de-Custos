@@ -1,0 +1,16 @@
+{
+  "name": "FinançasFamília",
+  "short_name": "Finanças",
+  "description": "Sistema de gestão financeira pessoal e familiar",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0f1117",
+  "theme_color": "#00d4a8",
+  "icons": [
+    {
+      "src": "/vite.svg",
+      "sizes": "any",
+      "type": "image/svg+xml"
+    }
+  ]
+}
