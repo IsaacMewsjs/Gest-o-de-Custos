@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import { AppProvider } from './context/AppContext';
 import { ThemeProvider } from './context/ThemeContext';
+import { AuthProvider, useAuth } from './context/AuthContext';
+import Auth from './pages/Auth';
 import Sidebar from './components/layout/Sidebar';
 import Header from './components/layout/Header';
 import BottomNav from './components/layout/BottomNav';
@@ -27,9 +29,31 @@ type Page =
   | 'settings';
 
 const AppContent: React.FC = () => {
+  const { isAuthenticated, loading } = useAuth();
   const [page, setPage] = useState<Page>('dashboard');
   const [showGlobalForm, setShowGlobalForm] = useState(false);
   const { toasts, addToast, removeToast } = useToast();
+
+  if (loading) {
+    return (
+      <div style={{
+        minHeight: '100vh',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        background: 'var(--bg-primary)'
+      }}>
+        <div style={{ textAlign: 'center' }}>
+          <div style={{ fontSize: '3rem', marginBottom: '16px', animation: 'pulse 1s infinite' }}>💰</div>
+          <div style={{ color: 'var(--text-secondary)' }}>Carregando...</div>
+        </div>
+      </div>
+    );
+  }
+
+  if (!isAuthenticated) {
+    return <Auth />;
+  }
 
   const renderPage = () => {
     switch (page) {
@@ -79,9 +103,11 @@ const AppContent: React.FC = () => {
 const App: React.FC = () => {
   return (
     <ThemeProvider>
-      <AppProvider>
-        <AppContent />
-      </AppProvider>
+      <AuthProvider>
+        <AppProvider>
+          <AppContent />
+        </AppProvider>
+      </AuthProvider>
     </ThemeProvider>
   );
 };

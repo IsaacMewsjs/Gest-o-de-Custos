@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
-import { Moon, Sun, Download, Upload, Trash2, Globe, DollarSign } from 'lucide-react';
+import { Moon, Sun, Download, Upload, Trash2, Globe, DollarSign, LogOut } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { useTheme } from '../context/ThemeContext';
+import { useAuth } from '../context/AuthContext';
 import { exportBackup, importBackup } from '../services/storage';
 import Modal from '../components/ui/Modal';
 
@@ -12,7 +13,15 @@ interface SettingsProps {
 const Settings: React.FC<SettingsProps> = ({ addToast }) => {
   const { settings, updateSettings, transactions, categories, goals, budgets, members } = useApp();
   const { theme, toggleTheme } = useTheme();
+  const { logout } = useAuth();
   const [showClearConfirm, setShowClearConfirm] = useState(false);
+  const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
+
+  const handleLogout = () => {
+    logout();
+    setShowLogoutConfirm(false);
+    addToast({ type: 'success', title: 'Desconectado com sucesso!' });
+  };
 
   const handleExportBackup = () => {
     const data = exportBackup();
@@ -180,6 +189,23 @@ const Settings: React.FC<SettingsProps> = ({ addToast }) => {
         </div>
       </Section>
 
+      {/* Account */}
+      <Section title="👤 Conta">
+        <SettingRow
+          icon={<LogOut size={18} style={{ color: 'var(--red)' }} />}
+          label="Sair / Logout"
+          description="Desconectar da sua conta"
+        >
+          <button
+            className="btn btn-ghost btn-sm"
+            style={{ color: 'var(--red)', borderColor: 'var(--border-red)' }}
+            onClick={() => setShowLogoutConfirm(true)}
+          >
+            <LogOut size={14} /> Sair
+          </button>
+        </SettingRow>
+      </Section>
+
       {/* Clear confirm */}
       <Modal
         open={showClearConfirm}
@@ -199,6 +225,24 @@ const Settings: React.FC<SettingsProps> = ({ addToast }) => {
         </p>
         <p className="text-muted" style={{ marginTop: 8 }}>
           💡 Considere exportar um backup antes.
+        </p>
+      </Modal>
+
+      {/* Logout confirm */}
+      <Modal
+        open={showLogoutConfirm}
+        onClose={() => setShowLogoutConfirm(false)}
+        title="⚠️ Desconectar"
+        size="sm"
+        footer={
+          <>
+            <button className="btn btn-ghost" onClick={() => setShowLogoutConfirm(false)}>Cancelar</button>
+            <button className="btn btn-red" onClick={handleLogout}>Desconectar</button>
+          </>
+        }
+      >
+        <p className="text-muted">
+          Você tem certeza que deseja sair da sua conta? Seus dados permanecerão salvos no dispositivo.
         </p>
       </Modal>
     </div>
