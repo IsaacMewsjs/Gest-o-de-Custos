@@ -1,21 +1,22 @@
-import type { Category, FamilyMember } from '../types';
+import type { Category, FamilyMember, DashboardWidgetPreference } from '../types';
 
 export const DEFAULT_CATEGORIES: Category[] = [
   { id: 'cat-alimentacao', name: 'Alimentação', icon: '🍽️', color: '#ff6b6b', type: 'expense', isDefault: true },
-  { id: 'cat-transporte', name: 'Transporte', icon: '🚗', color: '#ffa502', type: 'expense', isDefault: true },
-  { id: 'cat-moradia', name: 'Moradia', icon: '🏠', color: '#ff7f50', type: 'expense', isDefault: true },
-  { id: 'cat-saude', name: 'Saúde', icon: '💊', color: '#ff4757', type: 'expense', isDefault: true },
-  { id: 'cat-educacao', name: 'Educação', icon: '📚', color: '#5352ed', type: 'expense', isDefault: true },
-  { id: 'cat-lazer', name: 'Lazer', icon: '🎮', color: '#a29bfe', type: 'expense', isDefault: true },
-  { id: 'cat-roupas', name: 'Roupas', icon: '👗', color: '#fd79a8', type: 'expense', isDefault: true },
-  { id: 'cat-contas', name: 'Contas & Serviços', icon: '💡', color: '#fdcb6e', type: 'expense', isDefault: true },
-  { id: 'cat-investimentos', name: 'Investimentos', icon: '📈', color: '#00b894', type: 'expense', isDefault: true },
-  { id: 'cat-outros-exp', name: 'Outros', icon: '💸', color: '#636e72', type: 'expense', isDefault: true },
-  { id: 'cat-salario', name: 'Salário', icon: '💼', color: '#00d4a8', type: 'income', isDefault: true },
-  { id: 'cat-freelance', name: 'Freelance', icon: '💻', color: '#00cec9', type: 'income', isDefault: true },
-  { id: 'cat-presente', name: 'Presente / Doação', icon: '🎁', color: '#6c5ce7', type: 'income', isDefault: true },
-  { id: 'cat-rendimentos', name: 'Rendimentos', icon: '💰', color: '#55efc4', type: 'income', isDefault: true },
-  { id: 'cat-outros-inc', name: 'Outras Receitas', icon: '➕', color: '#74b9ff', type: 'income', isDefault: true },
+  { id: 'cat-transporte', name: 'Transporte', icon: '🚗', color: '#ff9500', type: 'expense', isDefault: true },
+  { id: 'cat-moradia', name: 'Moradia', icon: '🏠', color: '#d1a77a', type: 'expense', isDefault: true },
+  { id: 'cat-saude', name: 'Saúde', icon: '💊', color: '#ff3b30', type: 'expense', isDefault: true },
+  { id: 'cat-educacao', name: 'Educação', icon: '📚', color: '#0071e3', type: 'expense', isDefault: true },
+  { id: 'cat-lazer', name: 'Lazer', icon: '🎮', color: '#8e8ce8', type: 'expense', isDefault: true },
+  { id: 'cat-roupas', name: 'Roupas', icon: '👗', color: '#ff8fc7', type: 'expense', isDefault: true },
+  { id: 'cat-contas', name: 'Contas & Serviços', icon: '💡', color: '#ffcc00', type: 'expense', isDefault: true },
+  { id: 'cat-dizimos-ofertas', name: 'Dízimos e Ofertas', icon: '⛪', color: '#0071e3', type: 'expense', isDefault: true },
+  { id: 'cat-investimentos', name: 'Investimentos', icon: '📈', color: '#34c759', type: 'expense', isDefault: true },
+  { id: 'cat-outros-exp', name: 'Outros', icon: '💸', color: '#8e8e93', type: 'expense', isDefault: true },
+  { id: 'cat-salario', name: 'Salário', icon: '💼', color: '#0071e3', type: 'income', isDefault: true },
+  { id: 'cat-freelance', name: 'Freelance', icon: '💻', color: '#5ac8fa', type: 'income', isDefault: true },
+  { id: 'cat-presente', name: 'Presente / Doação', icon: '🎁', color: '#af52de', type: 'income', isDefault: true },
+  { id: 'cat-rendimentos', name: 'Rendimentos', icon: '💰', color: '#34c759', type: 'income', isDefault: true },
+  { id: 'cat-outros-inc', name: 'Outras Receitas', icon: '➕', color: '#64d2ff', type: 'income', isDefault: true },
 ];
 
 export const DEFAULT_MEMBER: FamilyMember = {
@@ -29,8 +30,19 @@ export const DEFAULT_MEMBER: FamilyMember = {
 export const MEMBER_AVATARS = ['😊', '😎', '🥰', '🤩', '😄', '👨', '👩', '👦', '👧', '🧔', '👴', '👵', '🧑', '👱', '🧒'];
 
 export const CATEGORY_COLORS = [
-  '#ff6b6b', '#ffa502', '#ff7f50', '#ff4757', '#5352ed',
-  '#a29bfe', '#fd79a8', '#fdcb6e', '#00b894', '#636e72',
-  '#00d4a8', '#00cec9', '#6c5ce7', '#55efc4', '#74b9ff',
-  '#e17055', '#d63031', '#0984e3', '#6ab04c', '#badc58',
+  '#ff6b6b', '#ff9500', '#d1a77a', '#ff3b30', '#0071e3',
+  '#8e8ce8', '#ff8fc7', '#ffcc00', '#34c759', '#8e8e93',
+  '#5ac8fa', '#64d2ff', '#af52de', '#7ee081', '#9fb0ff',
+  '#d6a77a', '#e36b6b', '#4da3ff', '#85c86b', '#c2d95c',
+];
+
+export const DEFAULT_DASHBOARD_WIDGETS: DashboardWidgetPreference[] = [
+  { id: 'health', visible: true },
+  { id: 'stats', visible: true },
+  { id: 'insights', visible: true },
+  { id: 'tithe', visible: true },
+  { id: 'charts', visible: true },
+  { id: 'recent', visible: true },
+  { id: 'tips', visible: true },
+  { id: 'budgets', visible: true },
 ];

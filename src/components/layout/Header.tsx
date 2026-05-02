@@ -10,29 +10,41 @@ interface HeaderProps {
 }
 
 const pageTitles: Record<string, string> = {
-  dashboard:    'Dashboard',
+  dashboard:    'Painel',
   transactions: 'Transações',
   budget:       'Orçamento',
   goals:        'Metas Financeiras',
   reports:      'Relatórios',
   family:       'Modo Família',
   categories:   'Categorias',
-  notifications:'Notificações',
-  settings:     'Configurações',
+  notifications:'Alertas',
+  settings:     'Ajustes',
 };
 
 const Header: React.FC<HeaderProps> = ({ title, onAddTransaction, onNavigate }) => {
   const { theme, toggleTheme } = useTheme();
-  const { notifications } = useApp();
+  const { notifications, syncStatus, lastSyncedAt } = useApp();
   const unread = notifications.filter(n => !n.read).length;
+  const syncLabel = syncStatus === 'local'
+    ? 'Somente local'
+    : syncStatus === 'syncing'
+      ? 'Sincronizando'
+      : syncStatus === 'error'
+        ? 'Erro ao sincronizar'
+        : 'Sincronizado';
 
   return (
     <header className="top-header">
       <h1 className="header-title">{pageTitles[title] ?? title}</h1>
 
       <div className="header-actions">
+        <span className={`sync-badge ${syncStatus}`} title={lastSyncedAt ? `Última sincronização ${new Date(lastSyncedAt).toLocaleString('pt-BR')}` : syncLabel}>
+          <span className="sync-dot" />
+          {syncLabel}
+        </span>
+
         {onAddTransaction && (
-          <button className="btn btn-green btn-sm" onClick={onAddTransaction}>
+          <button className="btn btn-primary btn-sm" onClick={onAddTransaction} aria-label="Adicionar movimento">
             <Plus size={15} />
             Nova
           </button>
@@ -42,6 +54,7 @@ const Header: React.FC<HeaderProps> = ({ title, onAddTransaction, onNavigate }) 
           className="btn-icon"
           onClick={() => onNavigate('notifications')}
           title="Notificações"
+          aria-label="Abrir notificações"
           style={{ position: 'relative' }}
         >
           <Bell size={18} />
@@ -55,7 +68,7 @@ const Header: React.FC<HeaderProps> = ({ title, onAddTransaction, onNavigate }) 
           )}
         </button>
 
-        <button className="btn-icon" onClick={toggleTheme} title="Alternar tema">
+        <button className="btn-icon" onClick={toggleTheme} title="Alternar tema" aria-label="Alternar tema">
           {theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />}
         </button>
       </div>

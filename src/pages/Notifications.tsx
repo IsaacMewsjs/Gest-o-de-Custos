@@ -1,6 +1,6 @@
 import React from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Bell, Check, Trash2, CheckCheck } from 'lucide-react';
+import { Bell, Check, Trash2, CheckCheck, ShieldAlert } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { formatDate } from '../utils/calculations';
 
@@ -16,8 +16,9 @@ const iconByType: Record<string, string> = {
 };
 
 const Notifications: React.FC<NotificationsProps> = ({ addToast }) => {
-  const { notifications, markNotificationRead, clearNotifications } = useApp();
+  const { notifications, markNotificationRead, clearNotifications, transactions, approveTransaction, canApproveTransactions } = useApp();
   const unread = notifications.filter(n => !n.read).length;
+  const pendingTransactions = transactions.filter(tx => tx.status === 'pending');
 
   return (
     <div className="page-wrapper">
@@ -50,6 +51,30 @@ const Notifications: React.FC<NotificationsProps> = ({ addToast }) => {
           </div>
         )}
       </div>
+
+      {pendingTransactions.length > 0 && (
+        <div className="card mb-16 pending-card">
+          <div className="flex items-center gap-8 mb-12">
+            <ShieldAlert size={16} style={{ color: 'var(--gold)' }} />
+            <div className="section-title">Aprovações pendentes</div>
+          </div>
+          <div className="flex flex-col gap-8">
+            {pendingTransactions.slice(0, 5).map(tx => (
+              <div key={tx.id} className="audit-item">
+                <div>
+                  <div className="audit-title">{tx.description}</div>
+                  <div className="audit-message">{formatDate(tx.date, 'dd/MM/yyyy')} · {tx.amount.toFixed(2)}</div>
+                </div>
+                {canApproveTransactions && (
+                  <button className="btn btn-ghost btn-sm" onClick={() => approveTransaction(tx.id)}>
+                    <Check size={14} /> Aprovar
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {notifications.length === 0 ? (
         <div className="card">

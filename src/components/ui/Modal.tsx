@@ -53,7 +53,7 @@ const Modal: React.FC<ModalProps> = ({
           >
             <div className="modal-header">
               <h3 style={{ margin: 0 }}>{title}</h3>
-              <button className="btn-icon" onClick={onClose}>
+              <button className="btn-icon" onClick={onClose} aria-label="Fechar modal">
                 <X size={16} />
               </button>
             </div>

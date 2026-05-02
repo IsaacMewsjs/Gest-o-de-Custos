@@ -10,14 +10,14 @@ import {
   formatCurrency, calcMonthSummary, formatMonthYear,
   getMonthTransactions, getLast6Months, capitalize
 } from '../utils/calculations';
-import { exportCSV, exportPDF } from '../services/export';
+import { exportCSV, exportPDF, exportAuditCSV } from '../services/export';
 
 const chartFmt = (val: any, name: any): any =>
   [formatCurrency(typeof val === 'number' ? val : 0), name];
 
 
 const Reports: React.FC = () => {
-  const { transactions, categories, members } = useApp();
+  const { transactions, categories, members, auditLogs } = useApp();
   const now = new Date();
   const [month, setMonth] = useState(now.getMonth() + 1);
   const [year, setYear] = useState(now.getFullYear());
@@ -108,10 +108,17 @@ const Reports: React.FC = () => {
             <Download size={14} /> CSV
           </button>
           <button
+            className="btn btn-ghost btn-sm"
+            onClick={() => exportAuditCSV(auditLogs)}
+          >
+            <FileText size={14} /> Auditoria
+          </button>
+          <button
             className="btn btn-primary btn-sm"
             onClick={() => exportPDF(
               monthTx, categories, members,
-              `Relatório — ${capitalize(formatMonthYear(month, year))}`
+              `Relatório — ${capitalize(formatMonthYear(month, year))}`,
+              auditLogs
             )}
           >
             <FileText size={14} /> PDF
@@ -188,9 +195,9 @@ const Reports: React.FC = () => {
                 }}
               />
               <Legend wrapperStyle={{ fontSize: '0.75rem' }} />
-              <Line type="monotone" dataKey="Entradas" stroke="#00d4a8" strokeWidth={2} dot={{ r: 4 }} />
-              <Line type="monotone" dataKey="Saídas"   stroke="#ff4757" strokeWidth={2} dot={{ r: 4 }} />
-              <Line type="monotone" dataKey="Saldo"    stroke="#4e8cff" strokeWidth={2} strokeDasharray="5 5" dot={false} />
+              <Line type="monotone" dataKey="Entradas" stroke="#0071e3" strokeWidth={2} dot={{ r: 4 }} />
+              <Line type="monotone" dataKey="Saídas"   stroke="#ff3b30" strokeWidth={2} dot={{ r: 4 }} />
+              <Line type="monotone" dataKey="Saldo"    stroke="#8e8e93" strokeWidth={2} strokeDasharray="5 5" dot={false} />
             </LineChart>
           </ResponsiveContainer>
         </div>

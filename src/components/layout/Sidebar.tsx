@@ -12,7 +12,7 @@ interface SidebarProps {
 }
 
 const navItems = [
-  { id: 'dashboard',    label: 'Dashboard',    icon: LayoutDashboard },
+  { id: 'dashboard',    label: 'Painel',       icon: LayoutDashboard },
   { id: 'transactions', label: 'Transações',   icon: ArrowLeftRight },
   { id: 'budget',       label: 'Orçamento',    icon: PiggyBank },
   { id: 'goals',        label: 'Metas',        icon: TrendingUp },
@@ -30,10 +30,12 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, onNavigate }) => {
     <aside className="sidebar">
       {/* Logo */}
       <div className="sidebar-logo">
-        <div className="logo-icon">💰</div>
+        <div className="logo-icon" aria-hidden="true">
+          <img src="/nexus-mark.svg" alt="" />
+        </div>
         <div>
-          <div className="logo-text">FinançasFamília</div>
-          <div className="logo-sub">Gestão Financeira</div>
+          <div className="logo-text">Nexus Financeiro</div>
+          <div className="logo-sub">Gestão financeira da igreja</div>
         </div>
       </div>
 
@@ -61,9 +63,10 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, onNavigate }) => {
         <button
           className={`nav-item ${currentPage === 'notifications' ? 'active' : ''}`}
           onClick={() => onNavigate('notifications')}
+          aria-label="Abrir alertas"
         >
           <Bell size={18} />
-          Notificações
+          Alertas
           {unread > 0 && <span className="nav-badge">{unread}</span>}
         </button>
 

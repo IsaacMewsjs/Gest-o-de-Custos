@@ -2,6 +2,14 @@ export type TransactionType = 'income' | 'expense';
 
 export type RecurrenceType = 'none' | 'daily' | 'weekly' | 'monthly' | 'yearly';
 
+export type TransactionStatus = 'pending' | 'approved';
+
+export type DashboardPresetId = 'inicio' | 'essencial' | 'analise' | 'planejamento';
+
+export type AuditLogAction = 'create' | 'update' | 'delete' | 'approve' | 'settings' | 'import' | 'preset' | 'reminder';
+
+export type AuditLogEntityType = 'transaction' | 'member' | 'category' | 'budget' | 'goal' | 'settings' | 'system';
+
 export interface Category {
   id: string;
   name: string;
@@ -29,8 +37,27 @@ export interface Transaction {
   memberId: string;
   recurrence: RecurrenceType;
   notes?: string;
+  parentTransactionId?: string;
+  isRecurringGenerated?: boolean;
+  status?: TransactionStatus;
+  approvalRequestedAt?: string;
+  approvedAt?: string;
+  approvedBy?: string;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface AuditLog {
+  id: string;
+  action: AuditLogAction;
+  entityType: AuditLogEntityType;
+  entityId?: string;
+  title: string;
+  message: string;
+  actorId: string;
+  actorName: string;
+  actorRole: 'admin' | 'member';
+  createdAt: string;
 }
 
 export interface Budget {
@@ -68,6 +95,16 @@ export interface AppSettings {
   locale: string;
   theme: 'dark' | 'light';
   activeMemberId: string;
+  dashboardWidgets: DashboardWidgetPreference[];
+  homeDashboardPreset: DashboardPresetId;
+  onboardingCompleted: boolean;
+}
+
+export type DashboardWidgetId = 'health' | 'stats' | 'insights' | 'tithe' | 'charts' | 'recent' | 'tips' | 'budgets';
+
+export interface DashboardWidgetPreference {
+  id: DashboardWidgetId;
+  visible: boolean;
 }
 
 export interface MonthSummary {

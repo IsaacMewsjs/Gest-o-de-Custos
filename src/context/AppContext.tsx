@@ -1,10 +1,12 @@
-import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import type {
   Transaction, Category, Budget, Goal,
-  FamilyMember, Notification, AppSettings
+  FamilyMember, Notification, AppSettings, AuditLog
 } from '../types';
 import * as storage from '../services/storage';
-import { generateId, calcMonthSummary } from '../utils/calculations';
+import { supabase } from '../services/supabase';
+import { useAuth } from './AuthContext';
+import { generateId, calcMonthSummary, formatCurrency } from '../utils/calculations';
 
 interface AppContextType {
   // Data
@@ -14,12 +16,18 @@ interface AppContextType {
   goals: Goal[];
   members: FamilyMember[];
   notifications: Notification[];
+  auditLogs: AuditLog[];
   settings: AppSettings;
+  activeMember: FamilyMember;
+  canManageTransactions: boolean;
+  canManageMembers: boolean;
+  canApproveTransactions: boolean;
 
   // Transactions
   addTransaction: (t: Omit<Transaction, 'id' | 'createdAt' | 'updatedAt'>) => void;
   updateTransaction: (id: string, t: Partial<Transaction>) => void;
   deleteTransaction: (id: string) => void;
+  approveTransaction: (id: string) => void;
 
   // Categories
   addCategory: (c: Omit<Category, 'id' | 'isDefault'>) => void;
@@ -47,18 +55,169 @@ interface AppContextType {
 
   // Settings
   updateSettings: (s: Partial<AppSettings>) => void;
+
+  // Sync
+  syncStatus: 'local' | 'syncing' | 'synced' | 'error';
+  lastSyncedAt: string | null;
 }
 
 const AppContext = createContext<AppContextType | null>(null);
 
+type CloudSnapshot = {
+  transactions: Transaction[];
+  categories: Category[];
+  budgets: Budget[];
+  goals: Goal[];
+  members: FamilyMember[];
+  notifications: Notification[];
+  auditLogs: AuditLog[];
+  settings: AppSettings;
+  updatedAt: string;
+};
+
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const { isAuthenticated, userId, loading } = useAuth();
   const [transactions, setTransactions] = useState<Transaction[]>(() => storage.getTransactions());
   const [categories, setCategories] = useState<Category[]>(() => storage.getCategories());
   const [budgets, setBudgets] = useState<Budget[]>(() => storage.getBudgets());
   const [goals, setGoals] = useState<Goal[]>(() => storage.getGoals());
   const [members, setMembers] = useState<FamilyMember[]>(() => storage.getMembers());
   const [notifications, setNotifications] = useState<Notification[]>(() => storage.getNotifications());
+  const [auditLogs, setAuditLogs] = useState<AuditLog[]>(() => storage.getAuditLogs());
   const [settings, setSettings] = useState<AppSettings>(() => storage.getSettings());
+  const [syncReady, setSyncReady] = useState(false);
+  const [syncStatus, setSyncStatus] = useState<'local' | 'syncing' | 'synced' | 'error'>(isAuthenticated ? 'syncing' : 'local');
+  const [lastSyncedAt, setLastSyncedAt] = useState<string | null>(null);
+  const syncReadyRef = useRef(false);
+  const syncTimerRef = useRef<number | null>(null);
+  const activeMember = members.find(member => member.id === settings.activeMemberId) ?? members[0];
+  const canManageTransactions = activeMember?.role === 'admin';
+  const canManageMembers = activeMember?.role === 'admin';
+  const canApproveTransactions = activeMember?.role === 'admin';
+
+  const getNextRecurringDate = useCallback((date: Date, recurrence: Transaction['recurrence']): Date => {
+    const next = new Date(date);
+    switch (recurrence) {
+      case 'daily': next.setDate(next.getDate() + 1); break;
+      case 'weekly': next.setDate(next.getDate() + 7); break;
+      case 'monthly': next.setMonth(next.getMonth() + 1); break;
+      case 'yearly': next.setFullYear(next.getFullYear() + 1); break;
+      default: break;
+    }
+    return next;
+  }, []);
+
+  const buildRecurringInstances = useCallback((list: Transaction[]): Transaction[] => {
+    const now = new Date();
+    const nowIso = now.toISOString();
+    const existingKeys = new Set(
+      list
+        .filter(t => t.parentTransactionId)
+        .map(t => `${t.parentTransactionId}:${new Date(t.date).toISOString().slice(0, 10)}`)
+    );
+    const generated: Transaction[] = [];
+
+    list
+      .filter(t => t.recurrence !== 'none' && !t.parentTransactionId && !t.isRecurringGenerated)
+      .forEach(source => {
+        let cursor = getNextRecurringDate(new Date(source.date), source.recurrence);
+        while (cursor <= now) {
+          const dateKey = cursor.toISOString().slice(0, 10);
+          const instanceKey = `${source.id}:${dateKey}`;
+          if (!existingKeys.has(instanceKey)) {
+            generated.push({
+              ...source,
+              id: generateId(),
+              date: cursor.toISOString(),
+              createdAt: nowIso,
+              updatedAt: nowIso,
+              parentTransactionId: source.id,
+              isRecurringGenerated: true,
+            });
+            existingKeys.add(instanceKey);
+          }
+          cursor = getNextRecurringDate(cursor, source.recurrence);
+        }
+      });
+
+    return generated;
+  }, [getNextRecurringDate]);
+
+  const applySnapshot = useCallback((snapshot: Partial<CloudSnapshot>) => {
+    if (snapshot.transactions) setTransactions(snapshot.transactions);
+    if (snapshot.categories) setCategories(snapshot.categories);
+    if (snapshot.budgets) setBudgets(snapshot.budgets);
+    if (snapshot.goals) setGoals(snapshot.goals);
+    if (snapshot.members) setMembers(snapshot.members);
+    if (snapshot.notifications) setNotifications(snapshot.notifications);
+    if (snapshot.auditLogs) setAuditLogs(snapshot.auditLogs);
+    if (snapshot.settings) setSettings(prev => ({ ...prev, ...snapshot.settings }));
+  }, []);
+
+  const buildSnapshot = useCallback((): CloudSnapshot => ({
+    transactions,
+    categories,
+    budgets,
+    goals,
+    members,
+    notifications,
+    auditLogs,
+    settings,
+    updatedAt: new Date().toISOString(),
+  }), [transactions, categories, budgets, goals, members, notifications, auditLogs, settings]);
+
+  useEffect(() => {
+    if (loading) return;
+
+    if (!isAuthenticated || !userId) {
+      syncReadyRef.current = false;
+      setSyncReady(false);
+      setSyncStatus('local');
+      return;
+    }
+
+    let cancelled = false;
+    syncReadyRef.current = false;
+    setSyncReady(false);
+    setSyncStatus('syncing');
+
+    const hydrateFromCloud = async () => {
+      try {
+        const { data, error } = await supabase.auth.getUser();
+        if (cancelled) return;
+        if (error) throw error;
+
+        const remoteSnapshot = data.user?.user_metadata?.app_state as Partial<CloudSnapshot> | undefined;
+        const remoteUpdatedAt = remoteSnapshot?.updatedAt ?? '';
+        const localUpdatedAt = storage.getSyncMeta().updatedAt;
+
+        if (remoteSnapshot && remoteUpdatedAt && (!localUpdatedAt || remoteUpdatedAt > localUpdatedAt)) {
+          applySnapshot(remoteSnapshot);
+          storage.saveSyncMeta({ updatedAt: remoteUpdatedAt });
+          setLastSyncedAt(remoteUpdatedAt);
+        }
+      } catch (error) {
+        console.error('Cloud sync load error:', error);
+        if (!cancelled) setSyncStatus('error');
+      } finally {
+        if (!cancelled) syncReadyRef.current = true;
+        if (!cancelled) setSyncReady(true);
+      }
+    };
+
+    hydrateFromCloud();
+
+    return () => {
+      cancelled = true;
+      syncReadyRef.current = false;
+      setSyncReady(false);
+      setSyncStatus('local');
+      if (syncTimerRef.current !== null) {
+        window.clearTimeout(syncTimerRef.current);
+        syncTimerRef.current = null;
+      }
+    };
+  }, [loading, isAuthenticated, userId, applySnapshot]);
 
   // Persist whenever state changes
   useEffect(() => { storage.saveTransactions(transactions); }, [transactions]);
@@ -67,7 +226,83 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   useEffect(() => { storage.saveGoals(goals); }, [goals]);
   useEffect(() => { storage.saveMembers(members); }, [members]);
   useEffect(() => { storage.saveNotifications(notifications); }, [notifications]);
+  useEffect(() => { storage.saveAuditLogs(auditLogs); }, [auditLogs]);
   useEffect(() => { storage.saveSettings(settings); }, [settings]);
+
+  useEffect(() => {
+    if (!syncReady) return;
+
+    const timestamp = new Date().toISOString();
+    storage.saveSyncMeta({ updatedAt: timestamp });
+
+    if (!isAuthenticated || !userId) return;
+
+    setSyncStatus('syncing');
+
+    if (syncTimerRef.current !== null) {
+      window.clearTimeout(syncTimerRef.current);
+    }
+
+    syncTimerRef.current = window.setTimeout(async () => {
+      try {
+        const snapshot = {
+          ...buildSnapshot(),
+          updatedAt: timestamp,
+        };
+
+        const { error } = await supabase.auth.updateUser({
+          data: { app_state: snapshot },
+        });
+
+        if (error) throw error;
+        setLastSyncedAt(timestamp);
+        setSyncStatus('synced');
+      } catch (error) {
+        console.error('Cloud sync save error:', error);
+        setSyncStatus('error');
+      }
+    }, 500);
+
+    return () => {
+      if (syncTimerRef.current !== null) {
+        window.clearTimeout(syncTimerRef.current);
+        syncTimerRef.current = null;
+      }
+    };
+  }, [transactions, categories, budgets, goals, members, notifications, settings, syncReady, isAuthenticated, userId, buildSnapshot]);
+
+  useEffect(() => {
+    if (!syncReady) return;
+    const generated = buildRecurringInstances(transactions);
+    if (generated.length > 0) {
+      setTransactions(prev => [...generated, ...prev]);
+    }
+  }, [transactions, syncReady, buildRecurringInstances]);
+
+  useEffect(() => {
+    if (!syncReady) return;
+    const titheCategory = categories.find(category => category.id === 'cat-dizimos-ofertas');
+    if (!titheCategory) return;
+
+    const now = new Date();
+    if (now.getDate() > 10) return;
+
+    const thisMonthHasTithe = transactions.some(transaction => {
+      const date = new Date(transaction.date);
+      return transaction.type === 'expense'
+        && transaction.categoryId === titheCategory.id
+        && date.getMonth() === now.getMonth()
+        && date.getFullYear() === now.getFullYear();
+    });
+
+    if (!thisMonthHasTithe) {
+      addNotification({
+        type: 'warning',
+        title: 'Dízimo pendente',
+        message: 'Ainda não há lançamento de dízimo neste mês. Registre o valor para manter o controle em dia.',
+      });
+    }
+  }, [transactions, categories, syncReady, activeMember]);
 
   // Budget alerts
   useEffect(() => {
@@ -118,40 +353,184 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     });
   }, []);
 
+  const appendAuditLog = useCallback((entry: Omit<AuditLog, 'id' | 'createdAt'>) => {
+    setAuditLogs(prev => [
+      {
+        ...entry,
+        id: generateId(),
+        createdAt: new Date().toISOString(),
+      },
+      ...prev,
+    ].slice(0, 200));
+  }, []);
+
   // Transactions
   const addTransaction = useCallback((t: Omit<Transaction, 'id' | 'createdAt' | 'updatedAt'>) => {
     const now = new Date().toISOString();
-    setTransactions(prev => [
-      { ...t, id: generateId(), createdAt: now, updatedAt: now },
-      ...prev,
-    ]);
-  }, []);
+    const status: 'approved' | 'pending' = activeMember?.role === 'admin' ? 'approved' : 'pending';
+    const created = {
+      ...t,
+      id: generateId(),
+      createdAt: now,
+      updatedAt: now,
+      status,
+      approvalRequestedAt: status === 'pending' ? now : undefined,
+      approvedAt: status === 'approved' ? now : undefined,
+      approvedBy: status === 'approved' ? activeMember?.id : undefined,
+    };
+
+    setTransactions(prev => [created, ...prev]);
+    appendAuditLog({
+      action: 'create',
+      entityType: 'transaction',
+      entityId: created.id,
+      title: status === 'pending' ? 'Lançamento aguardando aprovação' : 'Lançamento criado',
+      message: `${created.description} de ${formatCurrency(created.amount)} foi registrada.`,
+      actorId: activeMember?.id ?? 'member-default',
+      actorName: activeMember?.name ?? 'Usuário',
+      actorRole: activeMember?.role ?? 'member',
+    });
+
+    if (status === 'pending') {
+      addNotification({
+        type: 'warning',
+        title: 'Lançamento pendente',
+        message: `${created.description} foi enviada para aprovação do administrador.`,
+      });
+    }
+  }, [activeMember, appendAuditLog]);
 
   const updateTransaction = useCallback((id: string, updates: Partial<Transaction>) => {
+    if (!canManageTransactions) {
+      addNotification({
+        type: 'warning',
+        title: 'Acesso restrito',
+        message: 'Somente administradores podem editar transações.',
+      });
+      return;
+    }
     setTransactions(prev =>
       prev.map(t => t.id === id ? { ...t, ...updates, updatedAt: new Date().toISOString() } : t)
     );
-  }, []);
+    appendAuditLog({
+      action: 'update',
+      entityType: 'transaction',
+      entityId: id,
+      title: 'Transação atualizada',
+      message: 'Uma transação foi editada manualmente.',
+      actorId: activeMember?.id ?? 'member-default',
+      actorName: activeMember?.name ?? 'Usuário',
+      actorRole: activeMember?.role ?? 'member',
+    });
+  }, [activeMember, addNotification, appendAuditLog, canManageTransactions]);
 
   const deleteTransaction = useCallback((id: string) => {
-    setTransactions(prev => prev.filter(t => t.id !== id));
-  }, []);
+    if (!canManageTransactions) {
+      addNotification({
+        type: 'warning',
+        title: 'Acesso restrito',
+        message: 'Somente administradores podem excluir transações.',
+      });
+      return;
+    }
+    setTransactions(prev => prev.filter(t => t.id !== id && t.parentTransactionId !== id));
+    appendAuditLog({
+      action: 'delete',
+      entityType: 'transaction',
+      entityId: id,
+      title: 'Transação excluída',
+      message: 'Uma transação foi removida do sistema.',
+      actorId: activeMember?.id ?? 'member-default',
+      actorName: activeMember?.name ?? 'Usuário',
+      actorRole: activeMember?.role ?? 'member',
+    });
+  }, [activeMember, addNotification, appendAuditLog, canManageTransactions]);
+
+  const approveTransaction = useCallback((id: string) => {
+    if (!canApproveTransactions) {
+      addNotification({
+        type: 'warning',
+        title: 'Aprovação indisponível',
+        message: 'Somente administradores podem aprovar transações pendentes.',
+      });
+      return;
+    }
+
+    const approvedAt = new Date().toISOString();
+    const target = transactions.find(transaction => transaction.id === id);
+    setTransactions(prev => prev.map(transaction => (
+      transaction.id === id
+        ? { ...transaction, status: 'approved', approvedAt, approvedBy: activeMember?.id, updatedAt: approvedAt }
+        : transaction
+    )));
+
+    if (target) {
+      appendAuditLog({
+        action: 'approve',
+        entityType: 'transaction',
+        entityId: id,
+        title: 'Transação aprovada',
+        message: `${target.description} foi aprovada pelo administrador.`,
+        actorId: activeMember?.id ?? 'member-default',
+        actorName: activeMember?.name ?? 'Usuário',
+        actorRole: activeMember?.role ?? 'member',
+      });
+      addNotification({
+        type: 'success',
+        title: 'Transação aprovada',
+        message: `${target.description} foi liberada para o fluxo financeiro.`,
+      });
+    }
+  }, [activeMember, addNotification, appendAuditLog, canApproveTransactions, transactions]);
 
   // Categories
   const addCategory = useCallback((c: Omit<Category, 'id' | 'isDefault'>) => {
+    if (!canManageMembers) return;
     setCategories(prev => [...prev, { ...c, id: generateId(), isDefault: false }]);
-  }, []);
+    appendAuditLog({
+      action: 'create',
+      entityType: 'category',
+      title: 'Categoria criada',
+      message: `Nova categoria adicionada: ${c.name}.`,
+      actorId: activeMember?.id ?? 'member-default',
+      actorName: activeMember?.name ?? 'Usuário',
+      actorRole: activeMember?.role ?? 'member',
+    });
+  }, [activeMember, appendAuditLog, canManageMembers]);
 
   const updateCategory = useCallback((id: string, updates: Partial<Category>) => {
+    if (!canManageMembers) return;
     setCategories(prev => prev.map(c => c.id === id ? { ...c, ...updates } : c));
-  }, []);
+    appendAuditLog({
+      action: 'update',
+      entityType: 'category',
+      entityId: id,
+      title: 'Categoria atualizada',
+      message: 'Uma categoria foi ajustada nas configurações.',
+      actorId: activeMember?.id ?? 'member-default',
+      actorName: activeMember?.name ?? 'Usuário',
+      actorRole: activeMember?.role ?? 'member',
+    });
+  }, [activeMember, appendAuditLog, canManageMembers]);
 
   const deleteCategory = useCallback((id: string) => {
+    if (!canManageMembers) return;
     setCategories(prev => prev.filter(c => c.id !== id));
-  }, []);
+    appendAuditLog({
+      action: 'delete',
+      entityType: 'category',
+      entityId: id,
+      title: 'Categoria removida',
+      message: 'Uma categoria foi removida do cadastro.',
+      actorId: activeMember?.id ?? 'member-default',
+      actorName: activeMember?.name ?? 'Usuário',
+      actorRole: activeMember?.role ?? 'member',
+    });
+  }, [activeMember, appendAuditLog, canManageMembers]);
 
   // Budgets
   const setBudget = useCallback((b: Omit<Budget, 'id'>) => {
+    if (!canManageMembers) return;
     setBudgets(prev => {
       const existing = prev.find(
         x => x.categoryId === b.categoryId && x.month === b.month && x.year === b.year
@@ -161,18 +540,49 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
       return [...prev, { ...b, id: generateId() }];
     });
-  }, []);
+    appendAuditLog({
+      action: 'update',
+      entityType: 'budget',
+      title: 'Orçamento ajustado',
+      message: 'Um orçamento mensal foi criado ou atualizado.',
+      actorId: activeMember?.id ?? 'member-default',
+      actorName: activeMember?.name ?? 'Usuário',
+      actorRole: activeMember?.role ?? 'member',
+    });
+  }, [activeMember, appendAuditLog, canManageMembers]);
 
   const deleteBudget = useCallback((id: string) => {
+    if (!canManageMembers) return;
     setBudgets(prev => prev.filter(b => b.id !== id));
-  }, []);
+    appendAuditLog({
+      action: 'delete',
+      entityType: 'budget',
+      entityId: id,
+      title: 'Orçamento removido',
+      message: 'Um orçamento foi removido do cadastro.',
+      actorId: activeMember?.id ?? 'member-default',
+      actorName: activeMember?.name ?? 'Usuário',
+      actorRole: activeMember?.role ?? 'member',
+    });
+  }, [activeMember, appendAuditLog, canManageMembers]);
 
   // Goals
   const addGoal = useCallback((g: Omit<Goal, 'id' | 'createdAt'>) => {
+    if (!canManageMembers) return;
     setGoals(prev => [...prev, { ...g, id: generateId(), createdAt: new Date().toISOString() }]);
-  }, []);
+    appendAuditLog({
+      action: 'create',
+      entityType: 'goal',
+      title: 'Meta criada',
+      message: `Meta adicionada: ${g.name}.`,
+      actorId: activeMember?.id ?? 'member-default',
+      actorName: activeMember?.name ?? 'Usuário',
+      actorRole: activeMember?.role ?? 'member',
+    });
+  }, [activeMember, appendAuditLog, canManageMembers]);
 
   const updateGoal = useCallback((id: string, updates: Partial<Goal>) => {
+    if (!canManageMembers) return;
     setGoals(prev => prev.map(g => {
       if (g.id !== id) return g;
       const updated = { ...g, ...updates };
@@ -186,24 +596,77 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
       return updated;
     }));
-  }, [addNotification]);
+    appendAuditLog({
+      action: 'update',
+      entityType: 'goal',
+      entityId: id,
+      title: 'Meta atualizada',
+      message: 'Uma meta financeira foi ajustada.',
+      actorId: activeMember?.id ?? 'member-default',
+      actorName: activeMember?.name ?? 'Usuário',
+      actorRole: activeMember?.role ?? 'member',
+    });
+  }, [activeMember, addNotification, appendAuditLog, canManageMembers]);
 
   const deleteGoal = useCallback((id: string) => {
+    if (!canManageMembers) return;
     setGoals(prev => prev.filter(g => g.id !== id));
-  }, []);
+    appendAuditLog({
+      action: 'delete',
+      entityType: 'goal',
+      entityId: id,
+      title: 'Meta removida',
+      message: 'Uma meta financeira foi removida.',
+      actorId: activeMember?.id ?? 'member-default',
+      actorName: activeMember?.name ?? 'Usuário',
+      actorRole: activeMember?.role ?? 'member',
+    });
+  }, [activeMember, appendAuditLog, canManageMembers]);
 
   // Members
   const addMember = useCallback((m: Omit<FamilyMember, 'id' | 'createdAt'>) => {
+    if (!canManageMembers) return;
     setMembers(prev => [...prev, { ...m, id: generateId(), createdAt: new Date().toISOString() }]);
-  }, []);
+    appendAuditLog({
+      action: 'create',
+      entityType: 'member',
+      title: 'Membro adicionado',
+      message: `Novo membro cadastrado: ${m.name}.`,
+      actorId: activeMember?.id ?? 'member-default',
+      actorName: activeMember?.name ?? 'Usuário',
+      actorRole: activeMember?.role ?? 'member',
+    });
+  }, [activeMember, appendAuditLog, canManageMembers]);
 
   const updateMember = useCallback((id: string, updates: Partial<FamilyMember>) => {
+    if (!canManageMembers) return;
     setMembers(prev => prev.map(m => m.id === id ? { ...m, ...updates } : m));
-  }, []);
+    appendAuditLog({
+      action: 'update',
+      entityType: 'member',
+      entityId: id,
+      title: 'Membro atualizado',
+      message: 'Dados de um membro foram atualizados.',
+      actorId: activeMember?.id ?? 'member-default',
+      actorName: activeMember?.name ?? 'Usuário',
+      actorRole: activeMember?.role ?? 'member',
+    });
+  }, [activeMember, appendAuditLog, canManageMembers]);
 
   const deleteMember = useCallback((id: string) => {
+    if (!canManageMembers) return;
     setMembers(prev => prev.filter(m => m.id !== id));
-  }, []);
+    appendAuditLog({
+      action: 'delete',
+      entityType: 'member',
+      entityId: id,
+      title: 'Membro removido',
+      message: 'Um membro foi removido da lista.',
+      actorId: activeMember?.id ?? 'member-default',
+      actorName: activeMember?.name ?? 'Usuário',
+      actorRole: activeMember?.role ?? 'member',
+    });
+  }, [activeMember, appendAuditLog, canManageMembers]);
 
   // Notifications
   const markNotificationRead = useCallback((id: string) => {
@@ -217,18 +680,34 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // Settings
   const updateSettings = useCallback((updates: Partial<AppSettings>) => {
     setSettings(prev => ({ ...prev, ...updates }));
-  }, []);
+    appendAuditLog({
+      action: 'settings',
+      entityType: 'settings',
+      title: 'Configurações alteradas',
+      message: 'Preferências do aplicativo foram atualizadas.',
+      actorId: activeMember?.id ?? 'member-default',
+      actorName: activeMember?.name ?? 'Usuário',
+      actorRole: activeMember?.role ?? 'member',
+    });
+  }, [activeMember, appendAuditLog]);
 
   return (
     <AppContext.Provider value={{
-      transactions, categories, budgets, goals, members, notifications, settings,
+      transactions, categories, budgets, goals, members, notifications, auditLogs, settings,
+      activeMember,
+      canManageTransactions,
+      canManageMembers,
+      canApproveTransactions,
       addTransaction, updateTransaction, deleteTransaction,
+      approveTransaction,
       addCategory, updateCategory, deleteCategory,
       setBudget, deleteBudget,
       addGoal, updateGoal, deleteGoal,
       addMember, updateMember, deleteMember,
       addNotification, markNotificationRead, clearNotifications,
       updateSettings,
+      syncStatus,
+      lastSyncedAt,
     }}>
       {children}
     </AppContext.Provider>

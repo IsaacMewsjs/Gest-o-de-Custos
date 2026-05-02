@@ -32,7 +32,7 @@ const Budget: React.FC<BudgetProps> = ({ addToast }) => {
   const [editingGoal, setEditingGoal] = useState<Goal | null>(null);
   const [goalForm, setGoalForm] = useState({
     name: '', targetAmount: '', currentAmount: '',
-    deadline: '', icon: '🎯', color: '#00d4a8',
+    deadline: '', icon: '🎯', color: '#0071e3',
   });
   const [deleteGoalId, setDeleteGoalId] = useState<string | null>(null);
 
@@ -68,7 +68,7 @@ const Budget: React.FC<BudgetProps> = ({ addToast }) => {
     }
     setShowGoalForm(false);
     setEditingGoal(null);
-    setGoalForm({ name: '', targetAmount: '', currentAmount: '', deadline: '', icon: '🎯', color: '#00d4a8' });
+    setGoalForm({ name: '', targetAmount: '', currentAmount: '', deadline: '', icon: '🎯', color: '#0071e3' });
   };
 
   const openEditGoal = (g: Goal) => {

@@ -56,6 +56,7 @@ const ToastItem: React.FC<{ toast: Toast; onRemove: (id: string) => void }> = ({
         className="btn-icon"
         style={{ padding: 4 }}
         onClick={() => onRemove(toast.id)}
+        aria-label="Fechar notificação"
       >
         <X size={13} />
       </button>

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { AppProvider } from './context/AppContext';
 import { ThemeProvider } from './context/ThemeContext';
 import { AuthProvider, useAuth } from './context/AuthContext';
@@ -16,6 +16,9 @@ import Categories from './pages/Categories';
 import Notifications from './pages/Notifications';
 import Settings from './pages/Settings';
 import TransactionForm from './components/transactions/TransactionForm';
+import Modal from './components/ui/Modal';
+import { useApp } from './context/AppContext';
+import { Sparkles, Plus } from 'lucide-react';
 
 type Page =
   | 'dashboard'
@@ -30,9 +33,35 @@ type Page =
 
 const AppContent: React.FC = () => {
   const { isAuthenticated, loading } = useAuth();
+  const { settings, updateSettings } = useApp();
   const [page, setPage] = useState<Page>('dashboard');
   const [showGlobalForm, setShowGlobalForm] = useState(false);
+  const [showOnboarding, setShowOnboarding] = useState(false);
+  const [dismissedOnboarding, setDismissedOnboarding] = useState(false);
+  const [isOnline, setIsOnline] = useState(typeof navigator !== 'undefined' ? navigator.onLine : true);
   const { toasts, addToast, removeToast } = useToast();
+
+  useEffect(() => {
+    if (!loading && isAuthenticated && !settings.onboardingCompleted && !dismissedOnboarding) {
+      setShowOnboarding(true);
+    }
+  }, [loading, isAuthenticated, settings.onboardingCompleted, dismissedOnboarding]);
+
+  useEffect(() => {
+    const handleOnline = () => setIsOnline(true);
+    const handleOffline = () => setIsOnline(false);
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, []);
+
+  const completeOnboarding = () => {
+    updateSettings({ onboardingCompleted: true });
+    setShowOnboarding(false);
+  };
 
   if (loading) {
     return (
@@ -44,9 +73,9 @@ const AppContent: React.FC = () => {
         background: 'var(--bg-primary)'
       }}>
         <div style={{ textAlign: 'center' }}>
-          <div style={{ fontSize: '3rem', marginBottom: '16px', animation: 'pulse 1s infinite' }}>💰</div>
-          <div style={{ color: 'var(--text-secondary)' }}>Carregando...</div>
-        </div>
+            <img src="/nexus-mark.svg" alt="Nexus Financeiro" style={{ width: 72, height: 72, marginBottom: 16, animation: 'float 2.8s ease-in-out infinite' }} />
+            <div style={{ color: 'var(--text-secondary)' }}>Carregando...</div>
+          </div>
       </div>
     );
   }
@@ -77,6 +106,11 @@ const AppContent: React.FC = () => {
       <Sidebar currentPage={page} onNavigate={(p) => setPage(p as Page)} />
 
       <div className="main-content">
+        {!isOnline && (
+          <div className="connection-banner offline">
+            <strong>Modo offline ativo.</strong> Seus dados continuam salvos localmente e serão sincronizados quando a conexão voltar.
+          </div>
+        )}
         <Header
           title={page}
           onNavigate={(p) => setPage(p as Page)}
@@ -88,12 +122,45 @@ const AppContent: React.FC = () => {
 
       <BottomNav currentPage={page} onNavigate={(p) => setPage(p as Page)} />
 
+      <button
+        className="mobile-fab"
+        onClick={() => setShowGlobalForm(true)}
+        aria-label="Adicionar movimento"
+      >
+        <Plus size={22} />
+      </button>
+
       {/* Global transaction form (triggered from header) */}
       <TransactionForm
         open={showGlobalForm}
         onClose={() => setShowGlobalForm(false)}
         onSuccess={(msg) => addToast({ type: 'success', title: msg })}
       />
+
+      <Modal
+        open={showOnboarding}
+        onClose={() => { setShowOnboarding(false); setDismissedOnboarding(true); }}
+        title="Bem-vindo ao Nexus Financeiro"
+        footer={
+          <>
+            <button className="btn btn-ghost" onClick={() => { setShowOnboarding(false); setDismissedOnboarding(true); }}>Depois</button>
+            <button className="btn btn-primary" onClick={completeOnboarding}>
+              <Sparkles size={14} /> Começar
+            </button>
+          </>
+        }
+      >
+        <div className="empty-state" style={{ padding: '8px 0 0' }}>
+          <div className="empty-icon">✨</div>
+          <div className="empty-title">Organize suas finanças com um painel minimalista</div>
+          <div className="empty-desc">Escolha o que aparece no painel, crie seus primeiros movimentos e acompanhe tudo em português.</div>
+        </div>
+        <div className="onboarding-list">
+          <div>1. Escolha o modo Início simples para começar com menos ruído visual.</div>
+          <div>2. Registre dízimos, ofertas e despesas com o botão de adicionar.</div>
+          <div>3. Acompanhe aprovações, alertas e exportações no mesmo lugar.</div>
+        </div>
+      </Modal>
 
       <ToastContainer toasts={toasts} onRemove={removeToast} />
     </div>

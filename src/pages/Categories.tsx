@@ -23,14 +23,14 @@ const Categories: React.FC<CategoriesProps> = ({ addToast }) => {
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [filterType, setFilterType] = useState<'all' | 'income' | 'expense'>('all');
   const [form, setForm] = useState({
-    name: '', icon: '💸', color: '#00d4a8', type: 'expense' as 'income' | 'expense' | 'both',
+    name: '', icon: '💸', color: '#0071e3', type: 'expense' as 'income' | 'expense' | 'both',
   });
 
   const filtered = categories.filter(c => filterType === 'all' || c.type === filterType || c.type === 'both');
 
   const openAdd = () => {
     setEditingCat(null);
-    setForm({ name: '', icon: '💸', color: '#00d4a8', type: 'expense' });
+    setForm({ name: '', icon: '💸', color: '#0071e3', type: 'expense' });
     setShowForm(true);
   };
 

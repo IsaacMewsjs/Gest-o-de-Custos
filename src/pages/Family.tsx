@@ -19,7 +19,7 @@ interface FamilyProps {
 }
 
 const Family: React.FC<FamilyProps> = ({ addToast }) => {
-  const { members, transactions, categories, settings, addMember, updateMember, deleteMember, updateSettings } = useApp();
+  const { members, transactions, categories, settings, addMember, updateMember, deleteMember, updateSettings, activeMember, canManageMembers } = useApp();
   const [showForm, setShowForm] = useState(false);
   const [editingMember, setEditingMember] = useState<FamilyMember | null>(null);
   const [deleteId, setDeleteId] = useState<string | null>(null);
@@ -76,7 +76,7 @@ const Family: React.FC<FamilyProps> = ({ addToast }) => {
     .map((m, i) => ({
       name: `${m.avatar} ${m.name}`,
       value: m.summary.totalExpense,
-      color: ['#00d4a8', '#4e8cff', '#a29bfe', '#ff6b6b', '#ffd32a', '#fd79a8'][i % 6],
+      color: ['#0071e3', '#34c759', '#8e8ce8', '#ff6b6b', '#ff9500', '#af52de'][i % 6],
     }));
 
   return (
@@ -86,12 +86,21 @@ const Family: React.FC<FamilyProps> = ({ addToast }) => {
           <h1 style={{ marginBottom: 4 }}>Modo Família</h1>
           <p className="text-muted text-sm">{members.length} membro(s) cadastrado(s)</p>
         </div>
-        {members.length < 6 && (
+        {canManageMembers && members.length < 6 && (
           <button className="btn btn-primary" onClick={openAdd}>
             <Plus size={16} /> Adicionar Membro
           </button>
         )}
       </div>
+
+      {!canManageMembers && (
+        <div className="card mb-16 permission-banner">
+          <div>
+            <div className="section-title" style={{ marginBottom: 4 }}>Acesso limitado</div>
+            <div className="text-muted text-sm">Seu perfil atual é de membro. Apenas administradores podem gerenciar pessoas e permissões.</div>
+          </div>
+        </div>
+      )}
 
       {/* Member cards */}
       <div className="section-grid mb-24 stagger">
@@ -150,22 +159,26 @@ const Family: React.FC<FamilyProps> = ({ addToast }) => {
                 className="btn btn-ghost btn-sm"
                 style={{ flex: 1 }}
                 onClick={() => updateSettings({ activeMemberId: member.id })}
-                disabled={settings.activeMemberId === member.id}
+                disabled={!canManageMembers || settings.activeMemberId === member.id}
               >
                 <UserCheck size={13} />
                 {settings.activeMemberId === member.id ? 'Ativo' : 'Ativar'}
               </button>
-              <button className="btn-icon" onClick={() => openEdit(member)}>
-                <Pencil size={14} />
-              </button>
-              {members.length > 1 && (
-                <button
-                  className="btn-icon"
-                  style={{ color: 'var(--red)' }}
-                  onClick={() => setDeleteId(member.id)}
-                >
-                  <Trash2 size={14} />
-                </button>
+              {canManageMembers && (
+                <>
+                  <button className="btn-icon" onClick={() => openEdit(member)}>
+                    <Pencil size={14} />
+                  </button>
+                  {members.length > 1 && (
+                    <button
+                      className="btn-icon"
+                      style={{ color: 'var(--red)' }}
+                      onClick={() => setDeleteId(member.id)}
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  )}
+                </>
               )}
             </div>
           </motion.div>

@@ -10,7 +10,7 @@ interface BottomNavProps {
 
 const mobileNav = [
   { id: 'dashboard',    label: 'Início',     icon: LayoutDashboard },
-  { id: 'transactions', label: 'Transações', icon: ArrowLeftRight },
+  { id: 'transactions', label: 'Movimentos', icon: ArrowLeftRight },
   { id: 'budget',       label: 'Orçamento',  icon: PiggyBank },
   { id: 'reports',      label: 'Relatórios', icon: BarChart3 },
   { id: 'family',       label: 'Família',    icon: Users },

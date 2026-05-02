@@ -17,10 +17,12 @@ import {
 import { generateTips } from '../services/tips';
 import TransactionForm from '../components/transactions/TransactionForm';
 import type { Toast } from '../components/ui/Toast';
+import { DEFAULT_DASHBOARD_WIDGETS } from '../constants';
+import type { DashboardWidgetId } from '../types';
 
 const CHART_COLORS = [
-  '#00d4a8', '#ff4757', '#4e8cff', '#ffd32a', '#a29bfe',
-  '#ff6b6b', '#ffa502', '#00cec9', '#fd79a8', '#fdcb6e',
+  '#0071e3', '#34c759', '#ff9500', '#8e8ce8', '#ff6b6b',
+  '#5ac8fa', '#af52de', '#ff8fc7', '#ffcc00', '#8e8e93',
 ];
 
 const chartFormatter = (val: any, _name: any): any =>
@@ -33,11 +35,14 @@ interface DashboardProps {
 const Dashboard: React.FC<DashboardProps> = ({ addToast }) => {
   const { transactions, categories, members, budgets, settings } = useApp();
   const [showForm, setShowForm] = useState(false);
+  const [formPreset, setFormPreset] = useState<{ type?: 'income' | 'expense'; categoryId?: string; description?: string; memberId?: string; recurrence?: 'none' | 'daily' | 'weekly' | 'monthly' | 'yearly' } | null>(null);
 
   const now = new Date();
   const month = now.getMonth() + 1;
   const year = now.getFullYear();
   const summary = calcMonthSummary(transactions, month, year);
+  const previousMonthDate = new Date(year, month - 2, 1);
+  const previousSummary = calcMonthSummary(transactions, previousMonthDate.getMonth() + 1, previousMonthDate.getFullYear());
   const health = getHealthStatus(summary.totalIncome, summary.totalExpense);
   const tips = generateTips(transactions, categories);
   const last6 = getLast6Months();
@@ -74,32 +79,48 @@ const Dashboard: React.FC<DashboardProps> = ({ addToast }) => {
   const hc = healthConfig[health];
 
   const activeMember = members.find((m: any) => m.id === settings.activeMemberId);
+  const dashboardWidgets = settings.dashboardWidgets?.length > 0
+    ? settings.dashboardWidgets
+    : DEFAULT_DASHBOARD_WIDGETS;
+  const titheCategory = categories.find(c => c.id === 'cat-dizimos-ofertas');
+  const titheTransactions = titheCategory
+    ? transactions.filter(tx => tx.type === 'expense' && tx.categoryId === titheCategory.id)
+    : [];
+  const titheThisMonth = titheTransactions
+    .filter(tx => new Date(tx.date).getMonth() + 1 === month && new Date(tx.date).getFullYear() === year)
+    .reduce((sum, tx) => sum + tx.amount, 0);
+  const tithePreviousMonth = titheTransactions
+    .filter(tx => new Date(tx.date).getMonth() + 1 === previousMonthDate.getMonth() + 1 && new Date(tx.date).getFullYear() === previousMonthDate.getFullYear())
+    .reduce((sum, tx) => sum + tx.amount, 0);
+  const titheVariation = tithePreviousMonth > 0
+    ? ((titheThisMonth - tithePreviousMonth) / tithePreviousMonth) * 100
+    : 0;
+  const tithePendingCount = titheTransactions.filter(tx => tx.status === 'pending').length;
 
-  return (
-    <div className="page-wrapper">
-      {/* Greeting */}
-      <motion.div
-        initial={{ opacity: 0, y: -10 }}
-        animate={{ opacity: 1, y: 0 }}
-        style={{ marginBottom: 24 }}
-      >
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 style={{ marginBottom: 4 }}>
-              Olá, {activeMember?.avatar} {activeMember?.name ?? 'Usuário'}!
-            </h1>
-            <p className="text-muted text-sm">
-              {capitalize(formatMonthYear(month, year))} — resumo financeiro
-            </p>
-          </div>
-          <button className="btn btn-green" onClick={() => setShowForm(true)}>
-            <Plus size={16} />
-            Nova Transação
-          </button>
-        </div>
-      </motion.div>
+  const openTitheForm = () => {
+    setFormPreset({
+      type: 'expense',
+      categoryId: titheCategory?.id ?? 'cat-dizimos-ofertas',
+      description: 'Dízimo',
+      memberId: settings.activeMemberId,
+      recurrence: 'monthly',
+    });
+    setShowForm(true);
+  };
 
-      {/* Health Indicator */}
+  const topCategoryEntry = Object.entries(summary.byCategory)
+    .sort((a, b) => b[1] - a[1])[0];
+  const topCategory = topCategoryEntry
+    ? categories.find(c => c.id === topCategoryEntry[0])
+    : undefined;
+  const expenseCount = transactions.filter(t => t.type === 'expense' && new Date(t.date).getMonth() + 1 === month && new Date(t.date).getFullYear() === year).length;
+  const avgExpense = expenseCount > 0 ? summary.totalExpense / expenseCount : 0;
+  const spendVariation = previousSummary.totalExpense > 0
+    ? ((summary.totalExpense - previousSummary.totalExpense) / previousSummary.totalExpense) * 100
+    : 0;
+
+  const widgetElements: Record<DashboardWidgetId, React.ReactNode> = {
+    health: (
       <motion.div
         className={`health-indicator ${health} mb-16`}
         initial={{ opacity: 0, x: -10 }}
@@ -112,8 +133,8 @@ const Dashboard: React.FC<DashboardProps> = ({ addToast }) => {
           <div style={{ fontSize: '0.78rem', opacity: 0.85 }}>{hc.text}</div>
         </div>
       </motion.div>
-
-      {/* Stat Cards */}
+    ),
+    stats: (
       <div className="stats-grid stagger mb-16">
         <StatCard
           label="Saldo Atual"
@@ -140,10 +161,64 @@ const Dashboard: React.FC<DashboardProps> = ({ addToast }) => {
           icon={<PiggyBank size={20} />}
         />
       </div>
-
-      {/* Charts */}
+    ),
+    tithe: (
+      <div className="card mb-16">
+        <div className="section-header mb-8">
+          <span className="section-title">Dízimos e Ofertas</span>
+        </div>
+        <div className="insight-grid" style={{ marginBottom: 12 }}>
+          <div className="card" style={{ background: 'var(--bg-elevated)' }}>
+            <div className="insight-kicker">Neste mês</div>
+            <div className="insight-value">{formatCurrency(titheThisMonth)}</div>
+            <div className="insight-sub">{titheTransactions.filter(tx => new Date(tx.date).getMonth() + 1 === month && new Date(tx.date).getFullYear() === year).length} lançamentos</div>
+          </div>
+          <div className="card" style={{ background: 'var(--bg-elevated)' }}>
+            <div className="insight-kicker">Variação mensal</div>
+            <div className={`insight-value ${titheVariation > 0 ? 'text-red' : 'text-green'}`}>{tithePreviousMonth > 0 ? `${titheVariation > 0 ? '+' : ''}${titheVariation.toFixed(0)}%` : 'N/A'}</div>
+            <div className="insight-sub">Comparado ao mês anterior</div>
+          </div>
+          <div className="card" style={{ background: 'var(--bg-elevated)' }}>
+            <div className="insight-kicker">Pendências</div>
+            <div className="insight-value">{tithePendingCount}</div>
+            <div className="insight-sub">Aguardando aprovação</div>
+          </div>
+        </div>
+        <div className="flex items-center justify-between gap-12 flex-wrap">
+          <div>
+            <div style={{ fontWeight: 700, marginBottom: 4 }}>{titheCategory?.icon ?? '⛪'} {titheCategory?.name ?? 'Dízimos e Ofertas'}</div>
+            <div className="text-muted text-sm">Registre os valores entregues pela igreja e acompanhe o total com facilidade.</div>
+          </div>
+          <button className="btn btn-primary btn-sm" onClick={openTitheForm}>
+            <Plus size={14} /> Lançar dízimo
+          </button>
+        </div>
+      </div>
+    ),
+    insights: (
+      <div className="insight-grid mb-16">
+        <div className="card">
+          <div className="section-title mb-8">Insight Principal</div>
+          <div className="insight-kicker">Maior categoria</div>
+          <div className="insight-value">{topCategory?.name ?? 'Sem dados'}</div>
+          <div className="insight-sub">{topCategoryEntry ? formatCurrency(topCategoryEntry[1]) : 'Adicione transações para gerar insights'}</div>
+        </div>
+        <div className="card">
+          <div className="section-title mb-8">Variação Mensal</div>
+          <div className="insight-kicker">Despesas vs mês anterior</div>
+          <div className={`insight-value ${spendVariation > 0 ? 'text-red' : 'text-green'}`}>{spendVariation > 0 ? '+' : ''}{spendVariation.toFixed(0)}%</div>
+          <div className="insight-sub">{previousSummary.totalExpense > 0 ? `Baseado em ${formatCurrency(previousSummary.totalExpense)}` : 'Sem comparação anterior'}</div>
+        </div>
+        <div className="card">
+          <div className="section-title mb-8">Média por Saída</div>
+          <div className="insight-kicker">Ticket médio do mês</div>
+          <div className="insight-value">{formatCurrency(avgExpense)}</div>
+          <div className="insight-sub">{expenseCount} despesas registradas neste período</div>
+        </div>
+      </div>
+    ),
+    charts: (
       <div className="charts-grid mb-16">
-        {/* Pie */}
         <div className="card">
           <div className="section-header">
             <span className="section-title">Gastos por Categoria</span>
@@ -186,11 +261,11 @@ const Dashboard: React.FC<DashboardProps> = ({ addToast }) => {
               <div className="empty-icon">📊</div>
               <div className="empty-title">Nenhum gasto registrado</div>
               <div className="empty-desc">Adicione transações para ver o gráfico</div>
+              <button className="btn btn-primary btn-sm" onClick={() => setShowForm(true)}>Adicionar movimento</button>
             </div>
           )}
         </div>
 
-        {/* Bar */}
         <div className="card">
           <div className="section-header">
             <span className="section-title">Entradas vs Saídas (6 meses)</span>
@@ -217,87 +292,95 @@ const Dashboard: React.FC<DashboardProps> = ({ addToast }) => {
                 }}
               />
               <Legend wrapperStyle={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }} />
-              <Bar dataKey="Entradas" fill="#00d4a8" radius={[6, 6, 0, 0]} />
-              <Bar dataKey="Saídas"   fill="#ff4757" radius={[6, 6, 0, 0]} />
+              <Bar dataKey="Entradas" fill="#0071e3" radius={[6, 6, 0, 0]} />
+              <Bar dataKey="Saídas" fill="#ff3b30" radius={[6, 6, 0, 0]} />
             </BarChart>
           </ResponsiveContainer>
         </div>
       </div>
-
-      {/* Recent + Tips */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 340px', gap: 16 }}>
-        {/* Recent Transactions */}
-        <div className="card">
-          <div className="section-header">
-            <span className="section-title">Últimas Transações</span>
+    ),
+    recent: (
+      <div className="card mb-16">
+        <div className="section-header">
+          <span className="section-title">Últimas Transações</span>
+        </div>
+        {recent.length === 0 ? (
+          <div className="empty-state">
+            <div className="empty-icon">💸</div>
+            <div className="empty-title">Nenhuma transação</div>
+            <div className="empty-desc">Clique em "Nova Transação" para começar</div>
+            <button className="btn btn-primary btn-sm" onClick={() => setShowForm(true)}>Nova transação</button>
           </div>
-          {recent.length === 0 ? (
-            <div className="empty-state">
-              <div className="empty-icon">💸</div>
-              <div className="empty-title">Nenhuma transação</div>
-              <div className="empty-desc">Clique em "Nova Transação" para começar</div>
-            </div>
-          ) : (
-            <div className="flex flex-col gap-8">
-              {recent.map(tx => {
-                const cat = categories.find((c: any) => c.id === tx.categoryId);
-                const member = members.find((m: any) => m.id === tx.memberId);
-                return (
-                  <div key={tx.id} className="transaction-item">
-                    <div
-                      className="tx-category-icon"
-                      style={{ background: cat?.color ? `${cat.color}20` : 'var(--bg-input)' }}
-                    >
-                      {cat?.icon ?? '💸'}
-                    </div>
-                    <div className="tx-info">
-                      <div className="tx-desc">{tx.description}</div>
-                      <div className="tx-meta">
-                        <span>{cat?.name}</span>
-                        <span>•</span>
-                        <span>{formatDate(tx.date)}</span>
-                        {member && <><span>•</span><span>{member.avatar}</span></>}
-                      </div>
-                    </div>
-                    <div className={`tx-amount ${tx.type}`}>
-                      {tx.type === 'income' ? '+' : '-'}
-                      {formatCurrency(tx.amount)}
+        ) : (
+          <div className="flex flex-col gap-8">
+            {recent.map(tx => {
+              const cat = categories.find((c: any) => c.id === tx.categoryId);
+              const member = members.find((m: any) => m.id === tx.memberId);
+              return (
+                <div key={tx.id} className="transaction-item">
+                  <div
+                    className="tx-category-icon"
+                    style={{ background: cat?.color ? `${cat.color}20` : 'var(--bg-input)' }}
+                  >
+                    {cat?.icon ?? '💸'}
+                  </div>
+                  <div className="tx-info">
+                    <div className="tx-desc">{tx.description}</div>
+                    <div className="tx-meta">
+                      <span>{cat?.name}</span>
+                      <span>•</span>
+                      <span>{formatDate(tx.date)}</span>
+                      {member && <><span>•</span><span>{member.avatar}</span></>}
                     </div>
                   </div>
-                );
-              })}
-            </div>
-          )}
-        </div>
-
-        {/* Tips */}
-        <div className="flex flex-col gap-12">
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-            <Lightbulb size={16} style={{ color: 'var(--gold)' }} />
-            <span className="section-title">Dicas Financeiras</span>
-          </div>
-          {tips.map((tip: any) => (
-            <div key={tip.id} className={`tip-card ${tip.type}`}>
-              <div className="tip-icon">{tip.icon}</div>
-              <div>
-                <div style={{ fontSize: '0.82rem', fontWeight: 700, color: 'var(--text-primary)', marginBottom: 3 }}>
-                  {tip.title}
+                  <div className={`tx-amount ${tx.type}`}>
+                    {tx.type === 'income' ? '+' : '-'}
+                    {formatCurrency(tx.amount)}
+                  </div>
                 </div>
-                <div style={{ fontSize: '0.76rem', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
-                  {tip.message}
+              );
+            })}
+          </div>
+        )}
+      </div>
+    ),
+    tips: (
+      <div className="card mb-16">
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+          <Lightbulb size={16} style={{ color: 'var(--gold)' }} />
+          <span className="section-title">Dicas Financeiras</span>
+        </div>
+        {tips.length === 0 ? (
+          <div className="empty-state">
+            <div className="empty-icon">💡</div>
+            <div className="empty-title">Sem dicas no momento</div>
+            <div className="empty-desc">Registre mais transações para receber recomendações</div>
+          </div>
+        ) : (
+          <div className="flex flex-col gap-12">
+            {tips.map((tip: any) => (
+              <div key={tip.id} className={`tip-card ${tip.type}`}>
+                <div className="tip-icon">{tip.icon}</div>
+                <div>
+                  <div style={{ fontSize: '0.82rem', fontWeight: 700, color: 'var(--text-primary)', marginBottom: 3 }}>
+                    {tip.title}
+                  </div>
+                  <div style={{ fontSize: '0.76rem', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
+                    {tip.message}
+                  </div>
                 </div>
               </div>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {/* Quick budget overview */}
-      {budgets.filter(b => b.month === month && b.year === year).length > 0 && (
-        <div className="card mt-16">
-          <div className="section-header mb-12">
-            <span className="section-title">Orçamentos do Mês</span>
+            ))}
           </div>
+        )}
+      </div>
+    ),
+    budgets: (
+      <div className="card mb-16">
+        <div className="section-header mb-12">
+          <span className="section-title">Orçamentos do Mês</span>
+        </div>
+        {budgets.filter(b => b.month === month && b.year === year).length > 0 ? (
           <div className="section-grid">
             {budgets
               .filter((b: any) => b.month === month && b.year === year)
@@ -329,13 +412,63 @@ const Dashboard: React.FC<DashboardProps> = ({ addToast }) => {
                 );
               })}
           </div>
+        ) : (
+          <div className="empty-state">
+            <div className="empty-icon">🧾</div>
+            <div className="empty-title">Nenhum orçamento definido</div>
+            <div className="empty-desc">Defina limites por categoria para controlar seus gastos</div>
+          </div>
+        )}
+      </div>
+    ),
+  };
+
+  return (
+    <div className="page-wrapper">
+      {/* Greeting */}
+      <motion.div
+        initial={{ opacity: 0, y: -10 }}
+        animate={{ opacity: 1, y: 0 }}
+        style={{ marginBottom: 24 }}
+      >
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 style={{ marginBottom: 4 }}>
+              Olá, {activeMember?.avatar} {activeMember?.name ?? 'Usuário'}!
+            </h1>
+            <p className="text-muted text-sm">
+              {capitalize(formatMonthYear(month, year))} — resumo financeiro
+            </p>
+          </div>
+          <button className="btn btn-primary" onClick={() => setShowForm(true)}>
+            <Plus size={16} />
+            Nova Transação
+          </button>
+        </div>
+      </motion.div>
+
+      {dashboardWidgets.filter(widget => widget.visible).map(widget => (
+        <React.Fragment key={widget.id}>
+          {widgetElements[widget.id]}
+        </React.Fragment>
+      ))}
+
+      {dashboardWidgets.every(widget => !widget.visible) && (
+        <div className="card mb-16">
+          <div className="empty-state">
+            <div className="empty-icon">🧩</div>
+            <div className="empty-title">Seu dashboard está vazio</div>
+            <div className="empty-desc">Ative os blocos do dashboard em Configurações para ver conteúdo aqui.</div>
+            <button className="btn btn-primary btn-sm" onClick={() => setShowForm(true)}>Adicionar movimento</button>
+          </div>
         </div>
       )}
 
       {/* Transaction form */}
       <TransactionForm
         open={showForm}
-        onClose={() => setShowForm(false)}
+        onClose={() => { setShowForm(false); setFormPreset(null); }}
+        preset={formPreset}
         onSuccess={(msg: string) => addToast({ type: 'success', title: msg })}
       />
     </div>

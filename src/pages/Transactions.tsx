@@ -1,27 +1,64 @@
-import React, { useState, useMemo } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Search, Pencil, Trash2, Plus } from 'lucide-react';
+import { Search, Pencil, Trash2, Plus, Bookmark, BookmarkPlus, X, Check } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { formatCurrency, formatDate } from '../utils/calculations';
 import TransactionForm from '../components/transactions/TransactionForm';
 import Modal from '../components/ui/Modal';
 import type { Transaction } from '../types';
 import type { Toast } from '../components/ui/Toast';
+import { getSavedTransactionFilters, saveSavedTransactionFilters, type SavedTransactionFilter } from '../services/storage';
 
 interface TransactionsProps {
   addToast: (t: Omit<Toast, 'id'>) => void;
 }
 
 const Transactions: React.FC<TransactionsProps> = ({ addToast }) => {
-  const { transactions, categories, members, deleteTransaction, settings } = useApp();
+  const { transactions, categories, members, deleteTransaction, approveTransaction, settings, activeMember, canManageTransactions, canApproveTransactions } = useApp();
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<Transaction | null>(null);
   const [deleteId, setDeleteId] = useState<string | null>(null);
+  const [formPreset, setFormPreset] = useState<{ type?: 'income' | 'expense'; categoryId?: string; description?: string; memberId?: string; recurrence?: 'none' | 'daily' | 'weekly' | 'monthly' | 'yearly' } | null>(null);
   const [search, setSearch] = useState('');
   const [filterType, setFilterType] = useState<'all' | 'income' | 'expense'>('all');
   const [filterCat, setFilterCat] = useState('');
   const [filterMember, setFilterMember] = useState('');
   const [sortBy, setSortBy] = useState<'date' | 'amount'>('date');
+  const [savedViews, setSavedViews] = useState<SavedTransactionFilter[]>(() => getSavedTransactionFilters());
+  const [viewName, setViewName] = useState('');
+
+  useEffect(() => {
+    saveSavedTransactionFilters(savedViews);
+  }, [savedViews]);
+
+  const saveCurrentView = () => {
+    const name = viewName.trim();
+    if (!name) return;
+    const view: SavedTransactionFilter = {
+      id: `${Date.now()}`,
+      name,
+      search,
+      filterType,
+      filterCat,
+      filterMember,
+      sortBy,
+    };
+    setSavedViews(prev => [...prev.filter(item => item.name !== name), view].slice(0, 6));
+    setViewName('');
+    addToast({ type: 'success', title: 'Filtro salvo' });
+  };
+
+  const applyView = (view: SavedTransactionFilter) => {
+    setSearch(view.search);
+    setFilterType(view.filterType);
+    setFilterCat(view.filterCat);
+    setFilterMember(view.filterMember);
+    setSortBy(view.sortBy);
+  };
+
+  const deleteSavedView = (id: string) => {
+    setSavedViews(prev => prev.filter(view => view.id !== id));
+  };
 
   const filtered = useMemo(() => {
     let list = [...transactions];
@@ -45,6 +82,33 @@ const Transactions: React.FC<TransactionsProps> = ({ addToast }) => {
 
   const totalIncome  = filtered.filter(t => t.type === 'income').reduce((s, t) => s + t.amount, 0);
   const totalExpense = filtered.filter(t => t.type === 'expense').reduce((s, t) => s + t.amount, 0);
+  const titheCategory = categories.find(c => c.id === 'cat-dizimos-ofertas');
+  const titheThisMonth = titheCategory
+    ? transactions.filter(t => {
+        const date = new Date(t.date);
+        return t.type === 'expense' && t.categoryId === titheCategory.id && date.getMonth() + 1 === new Date().getMonth() + 1 && date.getFullYear() === new Date().getFullYear();
+      }).reduce((sum, t) => sum + t.amount, 0)
+    : 0;
+  const titheCount = titheCategory
+    ? transactions.filter(t => {
+        const date = new Date(t.date);
+        return t.type === 'expense' && t.categoryId === titheCategory.id && date.getMonth() + 1 === new Date().getMonth() + 1 && date.getFullYear() === new Date().getFullYear();
+      }).length
+    : 0;
+  const pendingTransactions = transactions.filter(t => t.status === 'pending');
+  const pendingCount = pendingTransactions.length;
+
+  const openTitheForm = () => {
+    setEditing(null);
+    setFormPreset({
+      type: 'expense',
+      categoryId: titheCategory?.id ?? 'cat-dizimos-ofertas',
+      description: 'Dízimo',
+      memberId: settings.activeMemberId,
+      recurrence: 'monthly',
+    });
+    setShowForm(true);
+  };
 
   const handleDelete = () => {
     if (deleteId) {
@@ -62,13 +126,44 @@ const Transactions: React.FC<TransactionsProps> = ({ addToast }) => {
           <h1 style={{ marginBottom: 4 }}>Transações</h1>
           <p className="text-muted text-sm">{filtered.length} transações encontradas</p>
         </div>
-        <button className="btn btn-green" onClick={() => { setEditing(null); setShowForm(true); }}>
+        <button className="btn btn-primary" onClick={() => { setEditing(null); setFormPreset(null); setShowForm(true); }}>
           <Plus size={16} /> Nova
         </button>
       </div>
 
+      {pendingCount > 0 && (
+        <div className="card pending-card mb-16">
+          <div className="flex items-center justify-between gap-12 flex-wrap">
+            <div>
+              <div className="section-title" style={{ marginBottom: 4 }}>Aprovações pendentes</div>
+              <div className="text-muted text-sm">{pendingCount} transação(ões) aguardando revisão{activeMember?.role !== 'admin' ? ' pelo administrador' : ''}</div>
+            </div>
+            {canApproveTransactions && <div className="text-xs text-muted">O administrador pode aprovar direto na lista</div>}
+          </div>
+        </div>
+      )}
+
+      {titheCategory && (
+        <div className="card mb-16">
+          <div className="flex items-center justify-between gap-12 flex-wrap">
+            <div>
+              <div className="section-title" style={{ marginBottom: 4 }}>{titheCategory.icon} Dízimos e Ofertas</div>
+              <div className="text-muted text-sm">{titheCount} lançamentos neste mês · {formatCurrency(titheThisMonth)} registrados</div>
+            </div>
+            <div className="flex items-center gap-8 flex-wrap">
+              <button className="btn btn-ghost btn-sm" onClick={() => { setFilterType('expense'); setFilterCat(titheCategory.id); }}>
+                Ver lançamentos
+              </button>
+              <button className="btn btn-primary btn-sm" onClick={openTitheForm}>
+                <Plus size={14} /> Lançar dízimo
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Summary mini cards */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12, marginBottom: 20 }}>
+      <div className="transactions-summary-grid">
         <MiniCard label="Entradas" value={formatCurrency(totalIncome)} color="green" />
         <MiniCard label="Saídas" value={formatCurrency(totalExpense)} color="red" />
         <MiniCard
@@ -139,6 +234,35 @@ const Transactions: React.FC<TransactionsProps> = ({ addToast }) => {
         </select>
       </div>
 
+      <div className="saved-views-bar">
+        <div className="saved-view-input">
+          <input
+            className="form-input"
+            placeholder="Nome da visão, ex: Família + despesas"
+            value={viewName}
+            onChange={e => setViewName(e.target.value)}
+          />
+          <button className="btn btn-primary btn-sm" onClick={saveCurrentView}>
+            <BookmarkPlus size={14} /> Salvar visão
+          </button>
+        </div>
+
+        {savedViews.length > 0 && (
+          <div className="saved-view-chips">
+            {savedViews.map(view => (
+              <div key={view.id} className="saved-view-chip">
+                <button className="chip" onClick={() => applyView(view)}>
+                  <Bookmark size={12} /> {view.name}
+                </button>
+                <button className="btn-icon" onClick={() => deleteSavedView(view.id)} aria-label={`Excluir visão ${view.name}`}>
+                  <X size={12} />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
       {/* List */}
       {filtered.length === 0 ? (
         <div className="card">
@@ -146,6 +270,7 @@ const Transactions: React.FC<TransactionsProps> = ({ addToast }) => {
             <div className="empty-icon">💸</div>
             <div className="empty-title">Nenhuma transação encontrada</div>
             <div className="empty-desc">Tente ajustar os filtros ou adicione uma nova transação</div>
+            <button className="btn btn-primary btn-sm" onClick={() => { setEditing(null); setShowForm(true); }}>Nova transação</button>
           </div>
         </div>
       ) : (
@@ -154,6 +279,7 @@ const Transactions: React.FC<TransactionsProps> = ({ addToast }) => {
             {filtered.map((tx, i) => {
               const cat = categories.find(c => c.id === tx.categoryId);
               const member = members.find(m => m.id === tx.memberId);
+              const isPending = tx.status === 'pending';
               return (
                 <motion.div
                   key={tx.id}
@@ -188,6 +314,8 @@ const Transactions: React.FC<TransactionsProps> = ({ addToast }) => {
                         {tx.recurrence !== 'none' && (
                           <><span>•</span><span className="badge badge-blue">{tx.recurrence}</span></>
                         )}
+                        <span>•</span>
+                        <span className={`badge ${isPending ? 'badge-gold' : 'badge-green'}`}>{isPending ? 'Pendente' : 'Aprovado'}</span>
                       </div>
                     </div>
                     <div className={`tx-amount ${tx.type}`}>
@@ -195,21 +323,35 @@ const Transactions: React.FC<TransactionsProps> = ({ addToast }) => {
                       {formatCurrency(tx.amount)}
                     </div>
                     <div className="tx-actions">
-                      <button
-                        className="btn-icon"
-                        onClick={() => { setEditing(tx); setShowForm(true); }}
-                        title="Editar"
-                      >
-                        <Pencil size={14} />
-                      </button>
-                      <button
-                        className="btn-icon"
-                        style={{ color: 'var(--red)' }}
-                        onClick={() => setDeleteId(tx.id)}
-                        title="Excluir"
-                      >
-                        <Trash2 size={14} />
-                      </button>
+                      {isPending && canApproveTransactions && (
+                        <button
+                          className="btn-icon"
+                          style={{ color: 'var(--green)' }}
+                          onClick={() => approveTransaction(tx.id)}
+                          title="Aprovar"
+                        >
+                          <Check size={14} />
+                        </button>
+                      )}
+                      {canManageTransactions && (
+                        <>
+                          <button
+                            className="btn-icon"
+                            onClick={() => { setEditing(tx); setShowForm(true); }}
+                            title="Editar"
+                          >
+                            <Pencil size={14} />
+                          </button>
+                          <button
+                            className="btn-icon"
+                            style={{ color: 'var(--red)' }}
+                            onClick={() => setDeleteId(tx.id)}
+                            title="Excluir"
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        </>
+                      )}
                     </div>
                   </div>
                 </motion.div>
@@ -222,8 +364,9 @@ const Transactions: React.FC<TransactionsProps> = ({ addToast }) => {
       {/* Add/Edit Form */}
       <TransactionForm
         open={showForm}
-        onClose={() => { setShowForm(false); setEditing(null); }}
+        onClose={() => { setShowForm(false); setEditing(null); setFormPreset(null); }}
         editingTransaction={editing}
+        preset={formPreset}
         onSuccess={(msg) => addToast({ type: 'success', title: msg })}
       />
 

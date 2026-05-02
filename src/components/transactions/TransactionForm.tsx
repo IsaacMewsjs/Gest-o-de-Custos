@@ -9,6 +9,13 @@ interface TransactionFormProps {
   onClose: () => void;
   editingTransaction?: Transaction | null;
   onSuccess?: (msg: string) => void;
+  preset?: {
+    type?: 'income' | 'expense';
+    categoryId?: string;
+    description?: string;
+    memberId?: string;
+    recurrence?: RecurrenceType;
+  } | null;
 }
 
 const EMPTY_FORM = {
@@ -22,8 +29,12 @@ const EMPTY_FORM = {
   notes: '',
 };
 
+const toSafeIsoDate = (dateValue: string): string => {
+  return new Date(`${dateValue}T12:00:00.000Z`).toISOString();
+};
+
 const TransactionForm: React.FC<TransactionFormProps> = ({
-  open, onClose, editingTransaction, onSuccess,
+  open, onClose, editingTransaction, onSuccess, preset,
 }) => {
   const { categories, members, settings, addTransaction, updateTransaction } = useApp();
   const [form, setForm] = useState(EMPTY_FORM);
@@ -42,10 +53,17 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
         notes: editingTransaction.notes ?? '',
       });
     } else {
-      setForm({ ...EMPTY_FORM, memberId: settings.activeMemberId });
+      setForm({
+        ...EMPTY_FORM,
+        type: preset?.type ?? EMPTY_FORM.type,
+        categoryId: preset?.categoryId ?? EMPTY_FORM.categoryId,
+        description: preset?.description ?? EMPTY_FORM.description,
+        memberId: preset?.memberId ?? settings.activeMemberId,
+        recurrence: preset?.recurrence ?? EMPTY_FORM.recurrence,
+      });
     }
     setErrors({});
-  }, [editingTransaction, open, settings.activeMemberId]);
+  }, [editingTransaction, open, settings.activeMemberId, preset]);
 
   const filteredCategories = categories.filter(
     c => c.type === form.type || c.type === 'both'
@@ -71,7 +89,7 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
       amount: parseFloat(form.amount),
       categoryId: form.categoryId,
       description: form.description.trim(),
-      date: new Date(form.date).toISOString(),
+      date: toSafeIsoDate(form.date),
       memberId: form.memberId || settings.activeMemberId,
       recurrence: form.recurrence,
       notes: form.notes.trim() || undefined,
@@ -99,7 +117,7 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
         <>
           <button className="btn btn-ghost" onClick={onClose}>Cancelar</button>
           <button
-            className={`btn ${form.type === 'income' ? 'btn-green' : 'btn-red'}`}
+            className={`btn ${form.type === 'income' ? 'btn-primary' : 'btn-red'}`}
             onClick={handleSubmit}
           >
             {editingTransaction ? 'Salvar' : 'Adicionar'}
