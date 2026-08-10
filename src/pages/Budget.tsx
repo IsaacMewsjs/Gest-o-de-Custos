@@ -30,6 +30,7 @@ const Budget: React.FC<BudgetProps> = ({ addToast }) => {
   // Goal form
   const [showGoalForm, setShowGoalForm] = useState(false);
   const [editingGoal, setEditingGoal] = useState<Goal | null>(null);
+  const [mobileSection, setMobileSection] = useState<'budgets' | 'goals'>('budgets');
   const [goalForm, setGoalForm] = useState({
     name: '', targetAmount: '', currentAmount: '',
     deadline: '', icon: '🎯', color: '#0071e3',
@@ -110,219 +111,242 @@ const Budget: React.FC<BudgetProps> = ({ addToast }) => {
         </div>
       </div>
 
-      {/* ─── BUDGETS ─────────────────────────────── */}
-      <div className="section-header mb-16">
-        <span className="section-title">💳 Orçamento por Categoria</span>
-        <button className="btn btn-primary btn-sm" onClick={() => setShowBudgetForm(true)}>
-          <Plus size={14} /> Definir Orçamento
+      <div className="budget-mobile-tabs" role="tablist" aria-label="Alternar entre orçamentos e metas">
+        <button
+          type="button"
+          className={`budget-mobile-tab ${mobileSection === 'budgets' ? 'active' : ''}`}
+          onClick={() => setMobileSection('budgets')}
+          aria-pressed={mobileSection === 'budgets'}
+        >
+          Orçamentos
+        </button>
+        <button
+          type="button"
+          className={`budget-mobile-tab ${mobileSection === 'goals' ? 'active' : ''}`}
+          onClick={() => setMobileSection('goals')}
+          aria-pressed={mobileSection === 'goals'}
+        >
+          Metas
         </button>
       </div>
 
-      {monthBudgets.length === 0 ? (
-        <div className="card mb-24">
-          <div className="empty-state">
-            <div className="empty-icon">💳</div>
-            <div className="empty-title">Nenhum orçamento definido</div>
-            <div className="empty-desc">Defina limites por categoria para controlar seus gastos</div>
-            <button className="btn btn-primary btn-sm mt-8" onClick={() => setShowBudgetForm(true)}>
-              <Plus size={14} /> Criar Orçamento
-            </button>
+      {/* ─── BUDGETS ─────────────────────────────── */}
+      <div className={`budget-section ${mobileSection === 'goals' ? 'mobile-hidden' : ''}`}>
+        <div className="section-header mb-16">
+          <span className="section-title">💳 Orçamento por Categoria</span>
+          <button className="btn btn-primary btn-sm" onClick={() => setShowBudgetForm(true)}>
+            <Plus size={14} /> Definir Orçamento
+          </button>
+        </div>
+
+        {monthBudgets.length === 0 ? (
+          <div className="card mb-24">
+            <div className="empty-state">
+              <div className="empty-icon">💳</div>
+              <div className="empty-title">Nenhum orçamento definido</div>
+              <div className="empty-desc">Defina limites por categoria para controlar seus gastos</div>
+              <button className="btn btn-primary btn-sm mt-8" onClick={() => setShowBudgetForm(true)}>
+                <Plus size={14} /> Criar Orçamento
+              </button>
+            </div>
           </div>
-        </div>
-      ) : (
-        <div className="section-grid mb-24">
-          {monthBudgets.map((budget, i) => {
-            const cat = categories.find(c => c.id === budget.categoryId);
-            const spent = summary.byCategory[budget.categoryId] || 0;
-            const remaining = budget.amount - spent;
-            const pct = Math.min((spent / budget.amount) * 100, 100);
-            const status = pct >= 100 ? 'danger' : pct >= 80 ? 'warning' : 'safe';
+        ) : (
+          <div className="section-grid mb-24">
+            {monthBudgets.map((budget, i) => {
+              const cat = categories.find(c => c.id === budget.categoryId);
+              const spent = summary.byCategory[budget.categoryId] || 0;
+              const remaining = budget.amount - spent;
+              const pct = Math.min((spent / budget.amount) * 100, 100);
+              const status = pct >= 100 ? 'danger' : pct >= 80 ? 'warning' : 'safe';
 
-            return (
-              <motion.div
-                key={budget.id}
-                className="budget-card"
-                initial={{ opacity: 0, y: 12 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: i * 0.05 }}
-              >
-                <div className="budget-header">
-                  <div className="budget-cat">
-                    <span style={{ fontSize: '1.2rem' }}>{cat?.icon}</span>
-                    <span>{cat?.name ?? '—'}</span>
+              return (
+                <motion.div
+                  key={budget.id}
+                  className="budget-card"
+                  initial={{ opacity: 0, y: 12 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: i * 0.05 }}
+                >
+                  <div className="budget-header">
+                    <div className="budget-cat">
+                      <span style={{ fontSize: '1.2rem' }}>{cat?.icon}</span>
+                      <span>{cat?.name ?? '—'}</span>
+                    </div>
+                    <div className="flex gap-4 items-center">
+                      <span className={`badge badge-${status === 'safe' ? 'green' : status === 'warning' ? 'gold' : 'red'}`}>
+                        {Math.round(pct)}%
+                      </span>
+                      <button
+                        className="btn-icon"
+                        style={{ padding: 4 }}
+                        onClick={() => deleteBudget(budget.id)}
+                      >
+                        <Trash2 size={12} />
+                      </button>
+                    </div>
                   </div>
-                  <div className="flex gap-4 items-center">
-                    <span className={`badge badge-${status === 'safe' ? 'green' : status === 'warning' ? 'gold' : 'red'}`}>
-                      {Math.round(pct)}%
-                    </span>
-                    <button
-                      className="btn-icon"
-                      style={{ padding: 4 }}
-                      onClick={() => deleteBudget(budget.id)}
-                    >
-                      <Trash2 size={12} />
-                    </button>
+
+                  <div className="progress-track">
+                    <div
+                      className={`progress-fill ${status}`}
+                      style={{ width: `${pct}%` }}
+                    />
                   </div>
-                </div>
 
-                <div className="progress-track">
-                  <div
-                    className={`progress-fill ${status}`}
-                    style={{ width: `${pct}%` }}
-                  />
-                </div>
-
-                <div className="budget-amounts">
-                  <span>
-                    <span style={{ color: status === 'safe' ? 'var(--green)' : status === 'warning' ? 'var(--gold)' : 'var(--red)', fontWeight: 700 }}>
-                      {formatCurrency(spent)}
+                  <div className="budget-amounts">
+                    <span>
+                      <span style={{ color: status === 'safe' ? 'var(--green)' : status === 'warning' ? 'var(--gold)' : 'var(--red)', fontWeight: 700 }}>
+                        {formatCurrency(spent)}
+                      </span>
+                      {' '}gastos
                     </span>
-                    {' '}gastos
-                  </span>
-                  <span>Limite: {formatCurrency(budget.amount)}</span>
-                </div>
+                    <span>Limite: {formatCurrency(budget.amount)}</span>
+                  </div>
 
-                <div className="text-xs" style={{
-                  color: remaining >= 0 ? 'var(--text-muted)' : 'var(--red)',
-                  fontWeight: 600,
-                }}>
-                  {remaining >= 0
-                    ? `✓ Restam ${formatCurrency(remaining)}`
-                    : `⚠️ Excedeu ${formatCurrency(Math.abs(remaining))}`}
-                </div>
-              </motion.div>
-            );
-          })}
-        </div>
-      )}
+                  <div className="text-xs" style={{
+                    color: remaining >= 0 ? 'var(--text-muted)' : 'var(--red)',
+                    fontWeight: 600,
+                  }}>
+                    {remaining >= 0
+                      ? `✓ Restam ${formatCurrency(remaining)}`
+                      : `⚠️ Excedeu ${formatCurrency(Math.abs(remaining))}`}
+                  </div>
+                </motion.div>
+              );
+            })}
+          </div>
+        )}
+      </div>
 
       {/* ─── GOALS ────────────────────────────────── */}
-      <div className="section-header mb-16">
-        <span className="section-title">🎯 Metas Financeiras</span>
-        <button className="btn btn-primary btn-sm" onClick={() => { setEditingGoal(null); setShowGoalForm(true); }}>
-          <Plus size={14} /> Nova Meta
-        </button>
-      </div>
+      <div className={`budget-section ${mobileSection === 'budgets' ? 'mobile-hidden' : ''}`}>
+        <div className="section-header mb-16">
+          <span className="section-title">🎯 Metas Financeiras</span>
+          <button className="btn btn-primary btn-sm" onClick={() => { setEditingGoal(null); setShowGoalForm(true); }}>
+            <Plus size={14} /> Nova Meta
+          </button>
+        </div>
 
-      {goals.length === 0 ? (
-        <div className="card">
-          <div className="empty-state">
-            <div className="empty-icon">🎯</div>
-            <div className="empty-title">Nenhuma meta criada</div>
-            <div className="empty-desc">Crie metas para juntar dinheiro para seus sonhos</div>
-            <button className="btn btn-primary btn-sm mt-8" onClick={() => setShowGoalForm(true)}>
-              Nova Meta
-            </button>
+        {goals.length === 0 ? (
+          <div className="card">
+            <div className="empty-state">
+              <div className="empty-icon">🎯</div>
+              <div className="empty-title">Nenhuma meta criada</div>
+              <div className="empty-desc">Crie metas para juntar dinheiro para seus sonhos</div>
+              <button className="btn btn-primary btn-sm mt-8" onClick={() => setShowGoalForm(true)}>
+                Nova Meta
+              </button>
+            </div>
           </div>
-        </div>
-      ) : (
-        <div className="section-grid">
-          {goals.map((goal, i) => {
-            const pct = Math.min((goal.currentAmount / goal.targetAmount) * 100, 100);
-            const remaining = goal.targetAmount - goal.currentAmount;
-            const isDone = goal.currentAmount >= goal.targetAmount;
-            const r = 26;
-            const circ = 2 * Math.PI * r;
-            const offset = circ - (pct / 100) * circ;
+        ) : (
+          <div className="section-grid">
+            {goals.map((goal, i) => {
+              const pct = Math.min((goal.currentAmount / goal.targetAmount) * 100, 100);
+              const remaining = goal.targetAmount - goal.currentAmount;
+              const isDone = goal.currentAmount >= goal.targetAmount;
+              const r = 26;
+              const circ = 2 * Math.PI * r;
+              const offset = circ - (pct / 100) * circ;
 
-            return (
-              <motion.div
-                key={goal.id}
-                className={`goal-card ${isDone ? 'goal-completed' : ''}`}
-                initial={{ opacity: 0, y: 12 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: i * 0.05 }}
-              >
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-12">
+              return (
+                <motion.div
+                  key={goal.id}
+                  className={`goal-card ${isDone ? 'goal-completed' : ''}`}
+                  initial={{ opacity: 0, y: 12 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: i * 0.05 }}
+                >
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-12">
+                      <div
+                        className="goal-icon"
+                        style={{ background: `${goal.color}20`, fontSize: '1.6rem' }}
+                      >
+                        {goal.icon}
+                      </div>
+                      <div>
+                        <div style={{ fontWeight: 700, marginBottom: 2 }}>{goal.name}</div>
+                        {goal.deadline && (
+                          <div className="text-xs text-muted">
+                            Prazo: {new Date(goal.deadline).toLocaleDateString('pt-BR')}
+                          </div>
+                        )}
+                        {isDone && (
+                          <span className="badge badge-green" style={{ marginTop: 4 }}>✅ Concluída!</span>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Circular progress */}
+                    <div className="circular-progress">
+                      <svg width="60" height="60" viewBox="0 0 60 60">
+                        <circle className="track" cx="30" cy="30" r={r} />
+                        <circle
+                          className="fill"
+                          cx="30"
+                          cy="30"
+                          r={r}
+                          stroke={goal.color}
+                          strokeDasharray={circ}
+                          strokeDashoffset={offset}
+                        />
+                      </svg>
+                      <div className="pct">{Math.round(pct)}%</div>
+                    </div>
+                  </div>
+
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem' }}>
+                    <span style={{ color: goal.color, fontWeight: 700 }}>
+                      {formatCurrency(goal.currentAmount)}
+                    </span>
+                    <span className="text-muted">de {formatCurrency(goal.targetAmount)}</span>
+                  </div>
+
+                  <div className="progress-track">
                     <div
-                      className="goal-icon"
-                      style={{ background: `${goal.color}20`, fontSize: '1.6rem' }}
+                      className="progress-fill safe"
+                      style={{ width: `${pct}%`, background: `linear-gradient(90deg, ${goal.color}, ${goal.color}cc)` }}
+                    />
+                  </div>
+
+                  {!isDone && (
+                    <div className="text-xs text-muted">
+                      Faltam {formatCurrency(remaining)}
+                    </div>
+                  )}
+
+                  {/* Actions */}
+                  <div className="flex gap-8" style={{ marginTop: 4 }}>
+                    <button
+                      className="btn btn-ghost btn-sm"
+                      style={{ flex: 1 }}
+                      onClick={() => {
+                        const deposit = parseFloat(prompt('Quanto deseja depositar?') ?? '0');
+                        if (!isNaN(deposit) && deposit > 0) {
+                          updateGoal(goal.id, { currentAmount: goal.currentAmount + deposit });
+                          addToast({ type: 'success', title: `+${formatCurrency(deposit)} adicionados à meta` });
+                        }
+                      }}
                     >
-                      {goal.icon}
-                    </div>
-                    <div>
-                      <div style={{ fontWeight: 700, marginBottom: 2 }}>{goal.name}</div>
-                      {goal.deadline && (
-                        <div className="text-xs text-muted">
-                          Prazo: {new Date(goal.deadline).toLocaleDateString('pt-BR')}
-                        </div>
-                      )}
-                      {isDone && (
-                        <span className="badge badge-green" style={{ marginTop: 4 }}>✅ Concluída!</span>
-                      )}
-                    </div>
+                      + Depositar
+                    </button>
+                    <button className="btn-icon" onClick={() => openEditGoal(goal)}>
+                      <Pencil size={14} />
+                    </button>
+                    <button
+                      className="btn-icon"
+                      style={{ color: 'var(--red)' }}
+                      onClick={() => setDeleteGoalId(goal.id)}
+                    >
+                      <Trash2 size={14} />
+                    </button>
                   </div>
-
-                  {/* Circular progress */}
-                  <div className="circular-progress">
-                    <svg width="60" height="60" viewBox="0 0 60 60">
-                      <circle className="track" cx="30" cy="30" r={r} />
-                      <circle
-                        className="fill"
-                        cx="30"
-                        cy="30"
-                        r={r}
-                        stroke={goal.color}
-                        strokeDasharray={circ}
-                        strokeDashoffset={offset}
-                      />
-                    </svg>
-                    <div className="pct">{Math.round(pct)}%</div>
-                  </div>
-                </div>
-
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem' }}>
-                  <span style={{ color: goal.color, fontWeight: 700 }}>
-                    {formatCurrency(goal.currentAmount)}
-                  </span>
-                  <span className="text-muted">de {formatCurrency(goal.targetAmount)}</span>
-                </div>
-
-                <div className="progress-track">
-                  <div
-                    className="progress-fill safe"
-                    style={{ width: `${pct}%`, background: `linear-gradient(90deg, ${goal.color}, ${goal.color}cc)` }}
-                  />
-                </div>
-
-                {!isDone && (
-                  <div className="text-xs text-muted">
-                    Faltam {formatCurrency(remaining)}
-                  </div>
-                )}
-
-                {/* Actions */}
-                <div className="flex gap-8" style={{ marginTop: 4 }}>
-                  <button
-                    className="btn btn-ghost btn-sm"
-                    style={{ flex: 1 }}
-                    onClick={() => {
-                      const deposit = parseFloat(prompt('Quanto deseja depositar?') ?? '0');
-                      if (!isNaN(deposit) && deposit > 0) {
-                        updateGoal(goal.id, { currentAmount: goal.currentAmount + deposit });
-                        addToast({ type: 'success', title: `+${formatCurrency(deposit)} adicionados à meta` });
-                      }
-                    }}
-                  >
-                    + Depositar
-                  </button>
-                  <button className="btn-icon" onClick={() => openEditGoal(goal)}>
-                    <Pencil size={14} />
-                  </button>
-                  <button
-                    className="btn-icon"
-                    style={{ color: 'var(--red)' }}
-                    onClick={() => setDeleteGoalId(goal.id)}
-                  >
-                    <Trash2 size={14} />
-                  </button>
-                </div>
-              </motion.div>
-            );
-          })}
-        </div>
-      )}
+                </motion.div>
+              );
+            })}
+          </div>
+        )}
+      </div>
 
       {/* Budget Form Modal */}
       <Modal

@@ -406,11 +406,27 @@ button:focus-visible,
   .filter-bar {
     flex-direction: column;
     align-items: stretch;
+    gap: 8px;
   }
 
   .search-input-wrapper {
     min-width: 0;
     width: 100%;
+  }
+
+  .filter-chips {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    padding-bottom: 2px;
+    scrollbar-width: none;
+  }
+
+  .filter-chips::-webkit-scrollbar {
+    display: none;
+  }
+
+  .filter-chips .chip {
+    flex: 0 0 auto;
   }
 
   .filter-bar .form-select {
@@ -904,6 +920,36 @@ button:focus-visible,
   gap: 16px;
 }
 
+.budget-mobile-tabs {
+  display: none;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.budget-mobile-tab {
+  flex: 1;
+  padding: 10px 14px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--bg-input);
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: 0.82rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.18s ease;
+}
+
+.budget-mobile-tab.active {
+  background: var(--blue-dim);
+  border-color: rgba(78, 140, 255, 0.36);
+  color: var(--blue);
+}
+
+.budget-section.mobile-hidden {
+  display: block;
+}
+
 @media (max-width: 1200px) {
   .stats-grid { grid-template-columns: repeat(2, 1fr); }
   .charts-grid { grid-template-columns: 1fr; }
@@ -912,6 +958,16 @@ button:focus-visible,
 @media (max-width: 600px) {
   .stats-grid { grid-template-columns: repeat(2, 1fr); gap: 12px; }
   .section-grid { grid-template-columns: 1fr; }
+}
+
+@media (max-width: 768px) {
+  .budget-mobile-tabs {
+    display: flex;
+  }
+
+  .budget-section.mobile-hidden {
+    display: none;
+  }
 }
 
 @media (max-width: 400px) {
@@ -930,10 +986,28 @@ button:focus-visible,
 
   .transaction-item {
     align-items: flex-start;
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+
+  .tx-info {
+    flex: 1 1 calc(100% - 56px);
   }
 
   .tx-meta {
     flex-wrap: wrap;
+  }
+
+  .tx-amount {
+    width: 100%;
+    text-align: right;
+    order: 3;
+  }
+
+  .tx-actions {
+    width: 100%;
+    justify-content: flex-end;
+    order: 4;
   }
 
   .budget-header,
@@ -947,13 +1021,14 @@ button:focus-visible,
   }
 
   .bottom-nav-item {
-    padding: 5px 6px;
-    font-size: 0.58rem;
+    padding: 5px 4px;
+    font-size: 0.54rem;
+    letter-spacing: -0.01em;
   }
 
   .bottom-nav-item svg {
-    width: 18px;
-    height: 18px;
+    width: 17px;
+    height: 17px;
   }
 }
 
@@ -1048,7 +1123,7 @@ button:focus-visible,
 .tx-actions {
   display: flex;
   gap: 4px;
-  opacity: 0;
+  opacity: 1;
   transition: opacity 0.2s;
 }
 

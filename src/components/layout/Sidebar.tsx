@@ -1,7 +1,7 @@
 import React from 'react';
 import {
   LayoutDashboard, ArrowLeftRight, PiggyBank, BarChart3,
-  Users, Tag, Settings, TrendingUp, Bell, Moon, Sun
+  Users, Tag, Settings, Bell, Moon, Sun
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { useTheme } from '../../context/ThemeContext';
@@ -14,8 +14,7 @@ interface SidebarProps {
 const navItems = [
   { id: 'dashboard',    label: 'Painel',       icon: LayoutDashboard },
   { id: 'transactions', label: 'Transações',   icon: ArrowLeftRight },
-  { id: 'budget',       label: 'Orçamento',    icon: PiggyBank },
-  { id: 'goals',        label: 'Metas',        icon: TrendingUp },
+  { id: 'budget',       label: 'Orçamentos & Metas', icon: PiggyBank },
   { id: 'reports',      label: 'Relatórios',   icon: BarChart3 },
   { id: 'family',       label: 'Família',      icon: Users },
   { id: 'categories',   label: 'Categorias',   icon: Tag },

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { Suspense, useEffect, useState, lazy } from 'react';
 import { AppProvider } from './context/AppContext';
 import { ThemeProvider } from './context/ThemeContext';
 import { AuthProvider, useAuth } from './context/AuthContext';
@@ -7,24 +7,23 @@ import Sidebar from './components/layout/Sidebar';
 import Header from './components/layout/Header';
 import BottomNav from './components/layout/BottomNav';
 import { ToastContainer, useToast } from './components/ui/Toast';
-import Dashboard from './pages/Dashboard';
-import Transactions from './pages/Transactions';
-import Budget from './pages/Budget';
-import Reports from './pages/Reports';
-import Family from './pages/Family';
-import Categories from './pages/Categories';
-import Notifications from './pages/Notifications';
-import Settings from './pages/Settings';
-import TransactionForm from './components/transactions/TransactionForm';
 import Modal from './components/ui/Modal';
 import { useApp } from './context/AppContext';
-import { Sparkles, Plus } from 'lucide-react';
+import { Sparkles } from 'lucide-react';
+
+const Dashboard = lazy(() => import('./pages/Dashboard'));
+const Transactions = lazy(() => import('./pages/Transactions'));
+const Budget = lazy(() => import('./pages/Budget'));
+const Reports = lazy(() => import('./pages/Reports'));
+const Family = lazy(() => import('./pages/Family'));
+const Categories = lazy(() => import('./pages/Categories'));
+const Notifications = lazy(() => import('./pages/Notifications'));
+const Settings = lazy(() => import('./pages/Settings'));
 
 type Page =
   | 'dashboard'
   | 'transactions'
   | 'budget'
-  | 'goals'
   | 'reports'
   | 'family'
   | 'categories'
@@ -35,7 +34,6 @@ const AppContent: React.FC = () => {
   const { isAuthenticated, loading } = useAuth();
   const { settings, updateSettings } = useApp();
   const [page, setPage] = useState<Page>('dashboard');
-  const [showGlobalForm, setShowGlobalForm] = useState(false);
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [dismissedOnboarding, setDismissedOnboarding] = useState(false);
   const [isOnline, setIsOnline] = useState(typeof navigator !== 'undefined' ? navigator.onLine : true);
@@ -84,12 +82,26 @@ const AppContent: React.FC = () => {
     return <Auth />;
   }
 
+  const pageLoader = (
+    <div style={{
+      minHeight: '40vh',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      background: 'var(--bg-primary)'
+    }}>
+      <div style={{ textAlign: 'center' }}>
+        <img src="/nexus-mark.svg" alt="Nexus Financeiro" style={{ width: 56, height: 56, marginBottom: 12, animation: 'float 2.8s ease-in-out infinite' }} />
+        <div style={{ color: 'var(--text-secondary)' }}>Abrindo tela...</div>
+      </div>
+    </div>
+  );
+
   const renderPage = () => {
     switch (page) {
       case 'dashboard':    return <Dashboard addToast={addToast} />;
       case 'transactions': return <Transactions addToast={addToast} />;
-      case 'budget':
-      case 'goals':        return <Budget addToast={addToast} />;
+      case 'budget':       return <Budget addToast={addToast} />;
       case 'reports':      return <Reports />;
       case 'family':       return <Family addToast={addToast} />;
       case 'categories':   return <Categories addToast={addToast} />;
@@ -98,8 +110,6 @@ const AppContent: React.FC = () => {
       default:             return <Dashboard addToast={addToast} />;
     }
   };
-
-  const showAddButton = ['dashboard', 'transactions'].includes(page);
 
   return (
     <div className="app-layout">
@@ -114,28 +124,14 @@ const AppContent: React.FC = () => {
         <Header
           title={page}
           onNavigate={(p) => setPage(p as Page)}
-          onAddTransaction={showAddButton ? () => setShowGlobalForm(true) : undefined}
         />
 
-        {renderPage()}
+        <Suspense fallback={pageLoader}>
+          {renderPage()}
+        </Suspense>
       </div>
 
       <BottomNav currentPage={page} onNavigate={(p) => setPage(p as Page)} />
-
-      <button
-        className="mobile-fab"
-        onClick={() => setShowGlobalForm(true)}
-        aria-label="Adicionar movimento"
-      >
-        <Plus size={22} />
-      </button>
-
-      {/* Global transaction form (triggered from header) */}
-      <TransactionForm
-        open={showGlobalForm}
-        onClose={() => setShowGlobalForm(false)}
-        onSuccess={(msg) => addToast({ type: 'success', title: msg })}
-      />
 
       <Modal
         open={showOnboarding}

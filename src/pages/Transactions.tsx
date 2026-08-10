@@ -1,13 +1,12 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Search, Pencil, Trash2, Plus, Bookmark, BookmarkPlus, X, Check } from 'lucide-react';
+import { Search, Pencil, Trash2, Plus, Check } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { formatCurrency, formatDate } from '../utils/calculations';
 import TransactionForm from '../components/transactions/TransactionForm';
 import Modal from '../components/ui/Modal';
 import type { Transaction } from '../types';
 import type { Toast } from '../components/ui/Toast';
-import { getSavedTransactionFilters, saveSavedTransactionFilters, type SavedTransactionFilter } from '../services/storage';
 
 interface TransactionsProps {
   addToast: (t: Omit<Toast, 'id'>) => void;
@@ -24,41 +23,6 @@ const Transactions: React.FC<TransactionsProps> = ({ addToast }) => {
   const [filterCat, setFilterCat] = useState('');
   const [filterMember, setFilterMember] = useState('');
   const [sortBy, setSortBy] = useState<'date' | 'amount'>('date');
-  const [savedViews, setSavedViews] = useState<SavedTransactionFilter[]>(() => getSavedTransactionFilters());
-  const [viewName, setViewName] = useState('');
-
-  useEffect(() => {
-    saveSavedTransactionFilters(savedViews);
-  }, [savedViews]);
-
-  const saveCurrentView = () => {
-    const name = viewName.trim();
-    if (!name) return;
-    const view: SavedTransactionFilter = {
-      id: `${Date.now()}`,
-      name,
-      search,
-      filterType,
-      filterCat,
-      filterMember,
-      sortBy,
-    };
-    setSavedViews(prev => [...prev.filter(item => item.name !== name), view].slice(0, 6));
-    setViewName('');
-    addToast({ type: 'success', title: 'Filtro salvo' });
-  };
-
-  const applyView = (view: SavedTransactionFilter) => {
-    setSearch(view.search);
-    setFilterType(view.filterType);
-    setFilterCat(view.filterCat);
-    setFilterMember(view.filterMember);
-    setSortBy(view.sortBy);
-  };
-
-  const deleteSavedView = (id: string) => {
-    setSavedViews(prev => prev.filter(view => view.id !== id));
-  };
 
   const filtered = useMemo(() => {
     let list = [...transactions];
@@ -232,35 +196,6 @@ const Transactions: React.FC<TransactionsProps> = ({ addToast }) => {
           <option value="date">Mais recentes</option>
           <option value="amount">Maior valor</option>
         </select>
-      </div>
-
-      <div className="saved-views-bar">
-        <div className="saved-view-input">
-          <input
-            className="form-input"
-            placeholder="Nome da visão, ex: Família + despesas"
-            value={viewName}
-            onChange={e => setViewName(e.target.value)}
-          />
-          <button className="btn btn-primary btn-sm" onClick={saveCurrentView}>
-            <BookmarkPlus size={14} /> Salvar visão
-          </button>
-        </div>
-
-        {savedViews.length > 0 && (
-          <div className="saved-view-chips">
-            {savedViews.map(view => (
-              <div key={view.id} className="saved-view-chip">
-                <button className="chip" onClick={() => applyView(view)}>
-                  <Bookmark size={12} /> {view.name}
-                </button>
-                <button className="btn-icon" onClick={() => deleteSavedView(view.id)} aria-label={`Excluir visão ${view.name}`}>
-                  <X size={12} />
-                </button>
-              </div>
-            ))}
-          </div>
-        )}
       </div>
 
       {/* List */}

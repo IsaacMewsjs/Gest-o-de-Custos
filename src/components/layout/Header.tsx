@@ -1,19 +1,17 @@
 import React from 'react';
-import { Bell, Moon, Sun, Plus } from 'lucide-react';
+import { Bell, Moon, Sun } from 'lucide-react';
 import { useTheme } from '../../context/ThemeContext';
 import { useApp } from '../../context/AppContext';
 
 interface HeaderProps {
   title: string;
-  onAddTransaction?: () => void;
   onNavigate: (page: string) => void;
 }
 
 const pageTitles: Record<string, string> = {
   dashboard:    'Painel',
   transactions: 'Transações',
-  budget:       'Orçamento',
-  goals:        'Metas Financeiras',
+  budget:       'Orçamentos & Metas',
   reports:      'Relatórios',
   family:       'Modo Família',
   categories:   'Categorias',
@@ -21,7 +19,7 @@ const pageTitles: Record<string, string> = {
   settings:     'Ajustes',
 };
 
-const Header: React.FC<HeaderProps> = ({ title, onAddTransaction, onNavigate }) => {
+const Header: React.FC<HeaderProps> = ({ title, onNavigate }) => {
   const { theme, toggleTheme } = useTheme();
   const { notifications, syncStatus, lastSyncedAt } = useApp();
   const unread = notifications.filter(n => !n.read).length;
@@ -42,13 +40,6 @@ const Header: React.FC<HeaderProps> = ({ title, onAddTransaction, onNavigate }) 
           <span className="sync-dot" />
           {syncLabel}
         </span>
-
-        {onAddTransaction && (
-          <button className="btn btn-primary btn-sm" onClick={onAddTransaction} aria-label="Adicionar movimento">
-            <Plus size={15} />
-            Nova
-          </button>
-        )}
 
         <button
           className="btn-icon"
