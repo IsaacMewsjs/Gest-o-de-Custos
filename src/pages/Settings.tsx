@@ -66,7 +66,7 @@ const DASHBOARD_PRESETS: Record<string, DashboardWidgetPreference[]> = {
 };
 
 const Settings: React.FC<SettingsProps> = ({ addToast }) => {
-  const { settings, updateSettings, transactions, categories, goals, budgets, members, auditLogs, activeMember, canManageMembers } = useApp();
+  const { settings, updateSettings, transactions, categories, goals, budgets, members, notifications, auditLogs, activeMember, canManageMembers, applySnapshot } = useApp();
   const { theme, toggleTheme } = useTheme();
   const { logout } = useAuth();
   const [showClearConfirm, setShowClearConfirm] = useState(false);
@@ -80,7 +80,16 @@ const Settings: React.FC<SettingsProps> = ({ addToast }) => {
   };
 
   const handleExportBackup = () => {
-    const data = exportBackup();
+    const data = exportBackup({
+      transactions,
+      categories,
+      budgets,
+      goals,
+      members,
+      settings,
+      notifications,
+      auditLogs,
+    });
     const blob = new Blob([data], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -112,10 +121,10 @@ const Settings: React.FC<SettingsProps> = ({ addToast }) => {
     const reader = new FileReader();
     reader.onload = (ev) => {
       const json = ev.target?.result as string;
-      const success = importBackup(json);
-      if (success) {
-        addToast({ type: 'success', title: 'Backup importado! Recarregando...' });
-        setTimeout(() => window.location.reload(), 1500);
+      const data = importBackup(json);
+      if (data) {
+        applySnapshot(data);
+        addToast({ type: 'success', title: 'Backup importado! Sincronizando dados...' });
       } else {
         addToast({ type: 'danger', title: 'Erro ao importar backup', message: 'Arquivo inválido ou corrompido.' });
       }

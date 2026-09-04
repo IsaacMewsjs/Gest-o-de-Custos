@@ -1,12 +1,12 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import type {
   Transaction, Category, Budget, Goal,
-  FamilyMember, Notification, AppSettings, AuditLog
+  FamilyMember, Notification, AppSettings, AuditLog, DashboardWidgetPreference
 } from '../types';
-import * as storage from '../services/storage';
 import { supabase } from '../services/supabase';
 import { useAuth } from './AuthContext';
 import { generateId, calcMonthSummary, formatCurrency } from '../utils/calculations';
+import { DEFAULT_CATEGORIES, DEFAULT_MEMBER, DEFAULT_DASHBOARD_WIDGETS } from '../constants';
 
 interface AppContextType {
   // Data
@@ -57,11 +57,36 @@ interface AppContextType {
   updateSettings: (s: Partial<AppSettings>) => void;
 
   // Sync
+  applySnapshot: (snapshot: Partial<CloudSnapshot>) => void;
   syncStatus: 'local' | 'syncing' | 'synced' | 'error';
   lastSyncedAt: string | null;
 }
 
 const AppContext = createContext<AppContextType | null>(null);
+
+const normalizeDashboardWidgets = (widgets?: DashboardWidgetPreference[]): DashboardWidgetPreference[] => {
+  const byId = new Map((widgets ?? []).map(widget => [widget.id, widget]));
+  return DEFAULT_DASHBOARD_WIDGETS.map(widget => ({
+    id: widget.id,
+    visible: byId.get(widget.id)?.visible ?? widget.visible,
+  }));
+};
+
+const defaultSettings: AppSettings = {
+  currency: 'BRL',
+  locale: 'pt-BR',
+  theme: 'light',
+  activeMemberId: DEFAULT_MEMBER.id,
+  dashboardWidgets: DEFAULT_DASHBOARD_WIDGETS,
+  homeDashboardPreset: 'inicio',
+  onboardingCompleted: false,
+};
+
+const normalizeSettings = (stored?: Partial<AppSettings> | null): AppSettings => ({
+  ...defaultSettings,
+  ...stored,
+  dashboardWidgets: normalizeDashboardWidgets(stored?.dashboardWidgets),
+});
 
 type CloudSnapshot = {
   transactions: Transaction[];
@@ -77,14 +102,14 @@ type CloudSnapshot = {
 
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { isAuthenticated, userId, loading } = useAuth();
-  const [transactions, setTransactions] = useState<Transaction[]>(() => storage.getTransactions());
-  const [categories, setCategories] = useState<Category[]>(() => storage.getCategories());
-  const [budgets, setBudgets] = useState<Budget[]>(() => storage.getBudgets());
-  const [goals, setGoals] = useState<Goal[]>(() => storage.getGoals());
-  const [members, setMembers] = useState<FamilyMember[]>(() => storage.getMembers());
-  const [notifications, setNotifications] = useState<Notification[]>(() => storage.getNotifications());
-  const [auditLogs, setAuditLogs] = useState<AuditLog[]>(() => storage.getAuditLogs());
-  const [settings, setSettings] = useState<AppSettings>(() => storage.getSettings());
+  const [transactions, setTransactions] = useState<Transaction[]>(() => []);
+  const [categories, setCategories] = useState<Category[]>(() => DEFAULT_CATEGORIES);
+  const [budgets, setBudgets] = useState<Budget[]>(() => []);
+  const [goals, setGoals] = useState<Goal[]>(() => []);
+  const [members, setMembers] = useState<FamilyMember[]>(() => [DEFAULT_MEMBER]);
+  const [notifications, setNotifications] = useState<Notification[]>(() => []);
+  const [auditLogs, setAuditLogs] = useState<AuditLog[]>(() => []);
+  const [settings, setSettings] = useState<AppSettings>(() => defaultSettings);
   const [syncReady, setSyncReady] = useState(false);
   const [syncStatus, setSyncStatus] = useState<'local' | 'syncing' | 'synced' | 'error'>(isAuthenticated ? 'syncing' : 'local');
   const [lastSyncedAt, setLastSyncedAt] = useState<string | null>(null);
@@ -109,6 +134,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const buildRecurringInstances = useCallback((list: Transaction[]): Transaction[] => {
     const now = new Date();
+    const horizon = new Date(now);
+    horizon.setFullYear(now.getFullYear() + 5);
     const nowIso = now.toISOString();
     const existingKeys = new Set(
       list
@@ -121,7 +148,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       .filter(t => t.recurrence !== 'none' && !t.parentTransactionId && !t.isRecurringGenerated)
       .forEach(source => {
         let cursor = getNextRecurringDate(new Date(source.date), source.recurrence);
-        while (cursor <= now) {
+        while (cursor <= horizon) {
           const dateKey = cursor.toISOString().slice(0, 10);
           const instanceKey = `${source.id}:${dateKey}`;
           if (!existingKeys.has(instanceKey)) {
@@ -151,7 +178,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (snapshot.members) setMembers(snapshot.members);
     if (snapshot.notifications) setNotifications(snapshot.notifications);
     if (snapshot.auditLogs) setAuditLogs(snapshot.auditLogs);
-    if (snapshot.settings) setSettings(prev => ({ ...prev, ...snapshot.settings }));
+    if (snapshot.settings) setSettings(prev => normalizeSettings({ ...prev, ...snapshot.settings }));
   }, []);
 
   const buildSnapshot = useCallback((): CloudSnapshot => ({
@@ -189,12 +216,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
         const remoteSnapshot = data.user?.user_metadata?.app_state as Partial<CloudSnapshot> | undefined;
         const remoteUpdatedAt = remoteSnapshot?.updatedAt ?? '';
-        const localUpdatedAt = storage.getSyncMeta().updatedAt;
 
-        if (remoteSnapshot && remoteUpdatedAt && (!localUpdatedAt || remoteUpdatedAt > localUpdatedAt)) {
+        if (remoteSnapshot && remoteUpdatedAt) {
           applySnapshot(remoteSnapshot);
-          storage.saveSyncMeta({ updatedAt: remoteUpdatedAt });
           setLastSyncedAt(remoteUpdatedAt);
+        } else {
+          setCategories(DEFAULT_CATEGORIES);
+          setMembers([DEFAULT_MEMBER]);
+          setSettings(defaultSettings);
         }
       } catch (error) {
         console.error('Cloud sync load error:', error);
@@ -219,21 +248,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
   }, [loading, isAuthenticated, userId, applySnapshot]);
 
-  // Persist whenever state changes
-  useEffect(() => { storage.saveTransactions(transactions); }, [transactions]);
-  useEffect(() => { storage.saveCategories(categories); }, [categories]);
-  useEffect(() => { storage.saveBudgets(budgets); }, [budgets]);
-  useEffect(() => { storage.saveGoals(goals); }, [goals]);
-  useEffect(() => { storage.saveMembers(members); }, [members]);
-  useEffect(() => { storage.saveNotifications(notifications); }, [notifications]);
-  useEffect(() => { storage.saveAuditLogs(auditLogs); }, [auditLogs]);
-  useEffect(() => { storage.saveSettings(settings); }, [settings]);
-
   useEffect(() => {
     if (!syncReady) return;
 
     const timestamp = new Date().toISOString();
-    storage.saveSyncMeta({ updatedAt: timestamp });
 
     if (!isAuthenticated || !userId) return;
 
@@ -706,6 +724,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       addMember, updateMember, deleteMember,
       addNotification, markNotificationRead, clearNotifications,
       updateSettings,
+      applySnapshot,
       syncStatus,
       lastSyncedAt,
     }}>

@@ -33,6 +33,18 @@ export interface SavedTransactionFilter {
 
 export interface AuditLogEntry extends AuditLog {}
 
+export interface BackupData {
+  transactions: Transaction[];
+  categories: Category[];
+  budgets: Budget[];
+  goals: Goal[];
+  members: FamilyMember[];
+  settings: AppSettings;
+  notifications: Notification[];
+  auditLogs: AuditLog[];
+  exportedAt?: string;
+}
+
 const normalizeDashboardWidgets = (
   widgets?: DashboardWidgetPreference[]
 ): DashboardWidgetPreference[] => {
@@ -63,8 +75,9 @@ function getItem<T>(key: string, fallback: T): T {
   }
 }
 
-function setItem<T>(key: string, value: T): void {
-  localStorage.setItem(key, JSON.stringify(value));
+function setItem<T>(_key: string, _value: T): void {
+  // Business data persistence is handled in Supabase. We intentionally avoid
+  // writing app state to localStorage to prevent stale browser copies.
 }
 
 // ── Transactions ─────────────────────────────────────────────────────────────
@@ -154,34 +167,19 @@ export const clearSyncMeta = (): void => {
 };
 
 // ── Export ────────────────────────────────────────────────────────────────────
-export const exportBackup = (): string => {
-  const data = {
-    transactions: getTransactions(),
-    categories: getCategories(),
-    budgets: getBudgets(),
-    goals: getGoals(),
-    members: getMembers(),
-    settings: getSettings(),
-    notifications: getNotifications(),
-    auditLogs: getAuditLogs(),
+export const exportBackup = (data: Omit<BackupData, 'exportedAt'>): string => {
+  return JSON.stringify({
+    ...data,
     exportedAt: new Date().toISOString(),
-  };
-  return JSON.stringify(data, null, 2);
+  }, null, 2);
 };
 
-export const importBackup = (json: string): boolean => {
+export const importBackup = (json: string): Partial<BackupData> | null => {
   try {
     const data = JSON.parse(json);
-    if (data.transactions) saveTransactions(data.transactions);
-    if (data.categories) saveCategories(data.categories);
-    if (data.budgets) saveBudgets(data.budgets);
-    if (data.goals) saveGoals(data.goals);
-    if (data.members) saveMembers(data.members);
-    if (data.settings) saveSettings(data.settings);
-    if (data.notifications) saveNotifications(data.notifications);
-    if (data.auditLogs) saveAuditLogs(data.auditLogs);
-    return true;
+    if (!data || typeof data !== 'object' || Array.isArray(data)) return null;
+    return data as Partial<BackupData>;
   } catch {
-    return false;
+    return null;
   }
 };
