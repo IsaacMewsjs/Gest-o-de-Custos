@@ -3,6 +3,8 @@ import type {
   FamilyMember, AppSettings, Notification, AuditLog
 } from '../types';
 
+const LOCAL_STATE_KEY = 'ffam_app_state';
+
 export interface BackupData {
   transactions: Transaction[];
   categories: Category[];
@@ -14,6 +16,27 @@ export interface BackupData {
   auditLogs: AuditLog[];
   exportedAt?: string;
 }
+
+export type LocalAppState = Omit<BackupData, 'exportedAt'>;
+
+export const getLocalSnapshot = (): Partial<LocalAppState> | null => {
+  try {
+    const raw = localStorage.getItem(LOCAL_STATE_KEY);
+    if (!raw) return null;
+    const data = JSON.parse(raw);
+    return data && typeof data === 'object' && !Array.isArray(data) ? data : null;
+  } catch {
+    return null;
+  }
+};
+
+export const saveLocalSnapshot = (snapshot: LocalAppState): void => {
+  localStorage.setItem(LOCAL_STATE_KEY, JSON.stringify(snapshot));
+};
+
+export const clearLocalSnapshot = (): void => {
+  localStorage.removeItem(LOCAL_STATE_KEY);
+};
 
 // ── Export ────────────────────────────────────────────────────────────────────
 export const exportBackup = (data: Omit<BackupData, 'exportedAt'>): string => {

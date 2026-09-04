@@ -1,10 +1,9 @@
-import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import type {
   Transaction, Category, Budget, Goal,
   FamilyMember, Notification, AppSettings, AuditLog, DashboardWidgetPreference
 } from '../types';
-import { supabase } from '../services/supabase';
-import { useAuth } from './AuthContext';
+import { clearLocalSnapshot, getLocalSnapshot, saveLocalSnapshot } from '../services/storage';
 import { generateId, calcMonthSummary, formatCurrency } from '../utils/calculations';
 import { DEFAULT_CATEGORIES, DEFAULT_MEMBER, DEFAULT_DASHBOARD_WIDGETS } from '../constants';
 
@@ -58,7 +57,7 @@ interface AppContextType {
 
   // Sync
   applySnapshot: (snapshot: Partial<CloudSnapshot>) => void;
-  clearAllData: () => Promise<void>;
+  clearAllData: () => void;
   syncStatus: 'local' | 'syncing' | 'synced' | 'error';
   lastSyncedAt: string | null;
 }
@@ -101,37 +100,19 @@ type CloudSnapshot = {
   updatedAt: string;
 };
 
-const mergeById = <T extends { id: string }>(local: T[], remote: T[]): T[] => {
-  const localIds = new Set(local.map(item => item.id));
-  return [...remote.filter(item => !localIds.has(item.id)), ...local];
-};
-
-const mergeCloudSnapshots = (local: CloudSnapshot, remote: Partial<CloudSnapshot>): CloudSnapshot => ({
-  ...local,
-  transactions: remote.transactions ? mergeById(local.transactions, remote.transactions) : local.transactions,
-  categories: remote.categories ? mergeById(local.categories, remote.categories) : local.categories,
-  budgets: remote.budgets ? mergeById(local.budgets, remote.budgets) : local.budgets,
-  goals: remote.goals ? mergeById(local.goals, remote.goals) : local.goals,
-  members: remote.members ? mergeById(local.members, remote.members) : local.members,
-  notifications: remote.notifications ? mergeById(local.notifications, remote.notifications) : local.notifications,
-  auditLogs: remote.auditLogs ? mergeById(local.auditLogs, remote.auditLogs) : local.auditLogs,
-});
-
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const { isAuthenticated, userId, loading } = useAuth();
-  const [transactions, setTransactions] = useState<Transaction[]>(() => []);
-  const [categories, setCategories] = useState<Category[]>(() => DEFAULT_CATEGORIES);
-  const [budgets, setBudgets] = useState<Budget[]>(() => []);
-  const [goals, setGoals] = useState<Goal[]>(() => []);
-  const [members, setMembers] = useState<FamilyMember[]>(() => [DEFAULT_MEMBER]);
-  const [notifications, setNotifications] = useState<Notification[]>(() => []);
-  const [auditLogs, setAuditLogs] = useState<AuditLog[]>(() => []);
-  const [settings, setSettings] = useState<AppSettings>(() => defaultSettings);
-  const [syncReady, setSyncReady] = useState(false);
-  const [syncStatus, setSyncStatus] = useState<'local' | 'syncing' | 'synced' | 'error'>(isAuthenticated ? 'syncing' : 'local');
-  const [lastSyncedAt, setLastSyncedAt] = useState<string | null>(null);
-  const syncReadyRef = useRef(false);
-  const syncTimerRef = useRef<number | null>(null);
+  const storedSnapshot = getLocalSnapshot();
+  const [transactions, setTransactions] = useState<Transaction[]>(() => storedSnapshot?.transactions ?? []);
+  const [categories, setCategories] = useState<Category[]>(() => storedSnapshot?.categories ?? DEFAULT_CATEGORIES);
+  const [budgets, setBudgets] = useState<Budget[]>(() => storedSnapshot?.budgets ?? []);
+  const [goals, setGoals] = useState<Goal[]>(() => storedSnapshot?.goals ?? []);
+  const [members, setMembers] = useState<FamilyMember[]>(() => storedSnapshot?.members ?? [DEFAULT_MEMBER]);
+  const [notifications, setNotifications] = useState<Notification[]>(() => storedSnapshot?.notifications ?? []);
+  const [auditLogs, setAuditLogs] = useState<AuditLog[]>(() => storedSnapshot?.auditLogs ?? []);
+  const [settings, setSettings] = useState<AppSettings>(() => normalizeSettings(storedSnapshot?.settings));
+  const [syncReady] = useState(true);
+  const [syncStatus] = useState<'local' | 'syncing' | 'synced' | 'error'>('local');
+  const [lastSyncedAt] = useState<string | null>(null);
   const activeMember = members.find(member => member.id === settings.activeMemberId) ?? members[0];
   const canManageTransactions = activeMember?.role === 'admin';
   const canManageMembers = activeMember?.role === 'admin';
@@ -212,103 +193,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   }), [transactions, categories, budgets, goals, members, notifications, auditLogs, settings]);
 
   useEffect(() => {
-    if (loading) return;
-
-    if (!isAuthenticated || !userId) {
-      syncReadyRef.current = false;
-      setSyncReady(false);
-      setSyncStatus('local');
-      return;
-    }
-
-    let cancelled = false;
-    syncReadyRef.current = false;
-    setSyncReady(false);
-    setSyncStatus('syncing');
-
-    const hydrateFromCloud = async () => {
-      try {
-        const { data, error } = await supabase.auth.getUser();
-        if (cancelled) return;
-        if (error) throw error;
-
-        const remoteSnapshot = data.user?.user_metadata?.app_state as Partial<CloudSnapshot> | undefined;
-        const remoteUpdatedAt = remoteSnapshot?.updatedAt ?? '';
-
-        if (remoteSnapshot && remoteUpdatedAt) {
-          applySnapshot(remoteSnapshot);
-          setLastSyncedAt(remoteUpdatedAt);
-        } else {
-          setCategories(DEFAULT_CATEGORIES);
-          setMembers([DEFAULT_MEMBER]);
-          setSettings(defaultSettings);
-        }
-      } catch (error) {
-        console.error('Cloud sync load error:', error);
-        if (!cancelled) setSyncStatus('error');
-      } finally {
-        if (!cancelled) syncReadyRef.current = true;
-        if (!cancelled) setSyncReady(true);
-      }
-    };
-
-    hydrateFromCloud();
-
-    return () => {
-      cancelled = true;
-      syncReadyRef.current = false;
-      setSyncReady(false);
-      setSyncStatus('local');
-      if (syncTimerRef.current !== null) {
-        window.clearTimeout(syncTimerRef.current);
-        syncTimerRef.current = null;
-      }
-    };
-  }, [loading, isAuthenticated, userId, applySnapshot]);
-
-  useEffect(() => {
-    if (!syncReady) return;
-
-    const timestamp = new Date().toISOString();
-
-    if (!isAuthenticated || !userId) return;
-
-    setSyncStatus('syncing');
-
-    if (syncTimerRef.current !== null) {
-      window.clearTimeout(syncTimerRef.current);
-    }
-
-    syncTimerRef.current = window.setTimeout(async () => {
-      try {
-        const localSnapshot = { ...buildSnapshot(), updatedAt: timestamp };
-        const { data, error: userError } = await supabase.auth.getUser();
-        if (userError) throw userError;
-        const remoteSnapshot = data.user?.user_metadata?.app_state as Partial<CloudSnapshot> | undefined;
-        const snapshot = remoteSnapshot
-          ? mergeCloudSnapshots(localSnapshot, remoteSnapshot)
-          : localSnapshot;
-
-        const { error } = await supabase.auth.updateUser({
-          data: { app_state: snapshot },
-        });
-
-        if (error) throw error;
-        setLastSyncedAt(timestamp);
-        setSyncStatus('synced');
-      } catch (error) {
-        console.error('Cloud sync save error:', error);
-        setSyncStatus('error');
-      }
-    }, 500);
-
-    return () => {
-      if (syncTimerRef.current !== null) {
-        window.clearTimeout(syncTimerRef.current);
-        syncTimerRef.current = null;
-      }
-    };
-  }, [transactions, categories, budgets, goals, members, notifications, settings, syncReady, isAuthenticated, userId, buildSnapshot]);
+    saveLocalSnapshot(buildSnapshot());
+  }, [transactions, categories, budgets, goals, members, notifications, auditLogs, settings, buildSnapshot]);
 
   useEffect(() => {
     if (!syncReady) return;
@@ -733,24 +619,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     });
   }, [activeMember, appendAuditLog]);
 
-  const clearAllData = useCallback(async () => {
-    const clearedSnapshot: CloudSnapshot = {
-      transactions: [],
-      categories: DEFAULT_CATEGORIES,
-      budgets: [],
-      goals: [],
-      members: [DEFAULT_MEMBER],
-      notifications: [],
-      auditLogs: [],
-      settings: defaultSettings,
-      updatedAt: new Date().toISOString(),
-    };
-
-    const { error } = await supabase.auth.updateUser({
-      data: { app_state: clearedSnapshot },
-    });
-    if (error) throw error;
-
+  const clearAllData = useCallback(() => {
+    clearLocalSnapshot();
     setTransactions([]);
     setCategories(DEFAULT_CATEGORIES);
     setBudgets([]);
@@ -759,7 +629,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setNotifications([]);
     setAuditLogs([]);
     setSettings(defaultSettings);
-    setLastSyncedAt(clearedSnapshot.updatedAt);
   }, []);
 
   return (
