@@ -18,19 +18,20 @@ Você já tem:
 1. Acesse seu painel Supabase: https://app.supabase.com
 2. Vá para **SQL Editor** (no menu esquerdo)
 3. Clique em **New Query**
-4. Copie todo o conteúdo do arquivo `database_schema.sql` do seu projeto
+4. Copie todo o conteúdo do arquivo `relational_schema.sql` do seu projeto
 5. Cole no SQL Editor do Supabase
 6. Clique em **Run** para executar todos os comandos
+> O arquivo `relational_schema.sql` substitui o schema antigo e cria as tabelas usadas diretamente pelo aplicativo. Ele remove as tabelas anteriores com esses nomes, então execute-o apenas se não houver dados relacionais importantes para preservar.
 
 **O que será criado:**
-- `users` - Perfis de usuários
-- `family_groups` - Grupos familiares
-- `family_members` - Membros de grupos
-- `categories` - Categorias de transações
-- `transactions` - Transações financeiras
-- `budgets` - Orçamentos
-- `goals` - Metas financeiras
-- `notifications` - Notificações
+ `categories` - Categorias de transações
+ `transactions` - Transações
+ `budgets` - Orçamentos
+ `goals` - Metas financeiras
+ `family_members` - Membros
+ `notifications` - Notificações
+ `audit_logs` - Auditoria
+ `settings` - Configurações por usuário
 
 ### 2. Configurar Autenticação no Supabase
 

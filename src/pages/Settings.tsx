@@ -136,7 +136,6 @@ const Settings: React.FC<SettingsProps> = ({ addToast }) => {
   const handleClearData = async () => {
     try {
       await clearAllData();
-      localStorage.clear();
       setShowClearConfirm(false);
       addToast({ type: 'success', title: 'Dados removidos. Recarregando...' });
       setTimeout(() => window.location.reload(), 1500);

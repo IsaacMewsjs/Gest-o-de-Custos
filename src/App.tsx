@@ -32,7 +32,7 @@ type Page =
 
 const AppContent: React.FC = () => {
   const { isAuthenticated, loading } = useAuth();
-  const { settings, updateSettings } = useApp();
+  const { settings, updateSettings, dataReady, syncStatus, syncError } = useApp();
   const [page, setPage] = useState<Page>('dashboard');
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [dismissedOnboarding, setDismissedOnboarding] = useState(false);
@@ -74,6 +74,41 @@ const AppContent: React.FC = () => {
             <img src="/nexus-mark.svg" alt="Nexus Financeiro" style={{ width: 72, height: 72, marginBottom: 16, animation: 'float 2.8s ease-in-out infinite' }} />
             <div style={{ color: 'var(--text-secondary)' }}>Carregando...</div>
           </div>
+      </div>
+    );
+  }
+
+  if (isAuthenticated && !dataReady && syncStatus === 'syncing') {
+    return (
+      <div style={{
+        minHeight: '100vh',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        background: 'var(--bg-primary)',
+        color: 'var(--text-secondary)',
+      }}>
+        Carregando seus dados...
+      </div>
+    );
+  }
+
+  if (isAuthenticated && !dataReady && syncStatus === 'error') {
+    return (
+      <div style={{
+        minHeight: '100vh',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        background: 'var(--bg-primary)',
+        color: 'var(--text-secondary)',
+        textAlign: 'center',
+        padding: 24,
+      }}>
+        <div>
+          <div>Não foi possível carregar seus dados. Verifique sua conexão e recarregue a página.</div>
+          {syncError && <div style={{ marginTop: 8, fontSize: 12 }}>{syncError}</div>}
+        </div>
       </div>
     );
   }
