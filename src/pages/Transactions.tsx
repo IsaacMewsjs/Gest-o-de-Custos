@@ -44,19 +44,19 @@ const Transactions: React.FC<TransactionsProps> = ({ addToast }) => {
     return list;
   }, [transactions, filterType, filterCat, filterMember, search, sortBy, categories]);
 
-  const totalIncome  = filtered.filter(t => t.type === 'income').reduce((s, t) => s + t.amount, 0);
-  const totalExpense = filtered.filter(t => t.type === 'expense').reduce((s, t) => s + t.amount, 0);
+  const totalIncome  = filtered.filter(t => t.status !== 'pending' && t.type === 'income').reduce((s, t) => s + t.amount, 0);
+  const totalExpense = filtered.filter(t => t.status !== 'pending' && t.type === 'expense').reduce((s, t) => s + t.amount, 0);
   const titheCategory = categories.find(c => c.id === 'cat-dizimos-ofertas');
   const titheThisMonth = titheCategory
     ? transactions.filter(t => {
         const date = new Date(t.date);
-        return t.type === 'expense' && t.categoryId === titheCategory.id && date.getMonth() + 1 === new Date().getMonth() + 1 && date.getFullYear() === new Date().getFullYear();
+        return t.status !== 'pending' && t.type === 'expense' && t.categoryId === titheCategory.id && date.getMonth() + 1 === new Date().getMonth() + 1 && date.getFullYear() === new Date().getFullYear();
       }).reduce((sum, t) => sum + t.amount, 0)
     : 0;
   const titheCount = titheCategory
     ? transactions.filter(t => {
         const date = new Date(t.date);
-        return t.type === 'expense' && t.categoryId === titheCategory.id && date.getMonth() + 1 === new Date().getMonth() + 1 && date.getFullYear() === new Date().getFullYear();
+        return t.status !== 'pending' && t.type === 'expense' && t.categoryId === titheCategory.id && date.getMonth() + 1 === new Date().getMonth() + 1 && date.getFullYear() === new Date().getFullYear();
       }).length
     : 0;
   const pendingTransactions = transactions.filter(t => t.status === 'pending');

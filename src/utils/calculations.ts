@@ -37,7 +37,7 @@ export const getMonthTransactions = (
   const end = endOfMonth(new Date(year, month - 1, 1));
   return transactions.filter(t => {
     const date = parseISO(t.date);
-    return isWithinInterval(date, { start, end });
+    return t.status !== 'pending' && isWithinInterval(date, { start, end });
   });
 };
 

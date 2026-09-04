@@ -84,7 +84,7 @@ const Dashboard: React.FC<DashboardProps> = ({ addToast }) => {
     : DEFAULT_DASHBOARD_WIDGETS;
   const titheCategory = categories.find(c => c.id === 'cat-dizimos-ofertas');
   const titheTransactions = titheCategory
-    ? transactions.filter(tx => tx.type === 'expense' && tx.categoryId === titheCategory.id)
+    ? transactions.filter(tx => tx.status !== 'pending' && tx.type === 'expense' && tx.categoryId === titheCategory.id)
     : [];
   const titheThisMonth = titheTransactions
     .filter(tx => new Date(tx.date).getMonth() + 1 === month && new Date(tx.date).getFullYear() === year)
@@ -113,7 +113,7 @@ const Dashboard: React.FC<DashboardProps> = ({ addToast }) => {
   const topCategory = topCategoryEntry
     ? categories.find(c => c.id === topCategoryEntry[0])
     : undefined;
-  const expenseCount = transactions.filter(t => t.type === 'expense' && new Date(t.date).getMonth() + 1 === month && new Date(t.date).getFullYear() === year).length;
+  const expenseCount = transactions.filter(t => t.status !== 'pending' && t.type === 'expense' && new Date(t.date).getMonth() + 1 === month && new Date(t.date).getFullYear() === year).length;
   const avgExpense = expenseCount > 0 ? summary.totalExpense / expenseCount : 0;
   const spendVariation = previousSummary.totalExpense > 0
     ? ((summary.totalExpense - previousSummary.totalExpense) / previousSummary.totalExpense) * 100

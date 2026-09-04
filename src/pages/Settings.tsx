@@ -66,7 +66,7 @@ const DASHBOARD_PRESETS: Record<string, DashboardWidgetPreference[]> = {
 };
 
 const Settings: React.FC<SettingsProps> = ({ addToast }) => {
-  const { settings, updateSettings, transactions, categories, goals, budgets, members, notifications, auditLogs, activeMember, canManageMembers, applySnapshot } = useApp();
+  const { settings, updateSettings, transactions, categories, goals, budgets, members, notifications, auditLogs, activeMember, canManageMembers, applySnapshot, clearAllData } = useApp();
   const { theme, toggleTheme } = useTheme();
   const { logout } = useAuth();
   const [showClearConfirm, setShowClearConfirm] = useState(false);
@@ -133,11 +133,16 @@ const Settings: React.FC<SettingsProps> = ({ addToast }) => {
     e.target.value = '';
   };
 
-  const handleClearData = () => {
-    localStorage.clear();
-    setShowClearConfirm(false);
-    addToast({ type: 'success', title: 'Dados removidos. Recarregando...' });
-    setTimeout(() => window.location.reload(), 1500);
+  const handleClearData = async () => {
+    try {
+      await clearAllData();
+      localStorage.clear();
+      setShowClearConfirm(false);
+      addToast({ type: 'success', title: 'Dados removidos. Recarregando...' });
+      setTimeout(() => window.location.reload(), 1500);
+    } catch {
+      addToast({ type: 'danger', title: 'Não foi possível remover os dados', message: 'Verifique sua conexão e tente novamente.' });
+    }
   };
 
   const stats = [

@@ -58,6 +58,7 @@ interface AppContextType {
 
   // Sync
   applySnapshot: (snapshot: Partial<CloudSnapshot>) => void;
+  clearAllData: () => Promise<void>;
   syncStatus: 'local' | 'syncing' | 'synced' | 'error';
   lastSyncedAt: string | null;
 }
@@ -100,6 +101,22 @@ type CloudSnapshot = {
   updatedAt: string;
 };
 
+const mergeById = <T extends { id: string }>(local: T[], remote: T[]): T[] => {
+  const localIds = new Set(local.map(item => item.id));
+  return [...remote.filter(item => !localIds.has(item.id)), ...local];
+};
+
+const mergeCloudSnapshots = (local: CloudSnapshot, remote: Partial<CloudSnapshot>): CloudSnapshot => ({
+  ...local,
+  transactions: remote.transactions ? mergeById(local.transactions, remote.transactions) : local.transactions,
+  categories: remote.categories ? mergeById(local.categories, remote.categories) : local.categories,
+  budgets: remote.budgets ? mergeById(local.budgets, remote.budgets) : local.budgets,
+  goals: remote.goals ? mergeById(local.goals, remote.goals) : local.goals,
+  members: remote.members ? mergeById(local.members, remote.members) : local.members,
+  notifications: remote.notifications ? mergeById(local.notifications, remote.notifications) : local.notifications,
+  auditLogs: remote.auditLogs ? mergeById(local.auditLogs, remote.auditLogs) : local.auditLogs,
+});
+
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { isAuthenticated, userId, loading } = useAuth();
   const [transactions, setTransactions] = useState<Transaction[]>(() => []);
@@ -132,42 +149,43 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return next;
   }, []);
 
-  const buildRecurringInstances = useCallback((list: Transaction[]): Transaction[] => {
+  const buildRecurringInstances = useCallback((list: Transaction[]) => {
     const now = new Date();
-    const horizon = new Date(now);
-    horizon.setFullYear(now.getFullYear() + 5);
     const nowIso = now.toISOString();
-    const existingKeys = new Set(
-      list
-        .filter(t => t.parentTransactionId)
-        .map(t => `${t.parentTransactionId}:${new Date(t.date).toISOString().slice(0, 10)}`)
-    );
     const generated: Transaction[] = [];
+    const obsoleteIds: string[] = [];
 
     list
       .filter(t => t.recurrence !== 'none' && !t.parentTransactionId && !t.isRecurringGenerated)
       .forEach(source => {
-        let cursor = getNextRecurringDate(new Date(source.date), source.recurrence);
-        while (cursor <= horizon) {
-          const dateKey = cursor.toISOString().slice(0, 10);
-          const instanceKey = `${source.id}:${dateKey}`;
-          if (!existingKeys.has(instanceKey)) {
-            generated.push({
-              ...source,
-              id: generateId(),
-              date: cursor.toISOString(),
-              createdAt: nowIso,
-              updatedAt: nowIso,
-              parentTransactionId: source.id,
-              isRecurringGenerated: true,
-            });
-            existingKeys.add(instanceKey);
-          }
+        const instances = list
+          .filter(transaction => transaction.parentTransactionId === source.id)
+          .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+        const futureInstances = instances.filter(instance => new Date(instance.date) > now);
+
+        obsoleteIds.push(...futureInstances.slice(1).map(instance => instance.id));
+        if (futureInstances.length > 0) return;
+
+        const latestDate = instances.length > 0
+          ? new Date(instances[instances.length - 1].date)
+          : new Date(source.date);
+        let cursor = getNextRecurringDate(latestDate, source.recurrence);
+        while (cursor <= now) {
           cursor = getNextRecurringDate(cursor, source.recurrence);
         }
+
+        generated.push({
+          ...source,
+          id: generateId(),
+          date: cursor.toISOString(),
+          createdAt: nowIso,
+          updatedAt: nowIso,
+          parentTransactionId: source.id,
+          isRecurringGenerated: true,
+        });
       });
 
-    return generated;
+    return { generated, obsoleteIds };
   }, [getNextRecurringDate]);
 
   const applySnapshot = useCallback((snapshot: Partial<CloudSnapshot>) => {
@@ -263,10 +281,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     syncTimerRef.current = window.setTimeout(async () => {
       try {
-        const snapshot = {
-          ...buildSnapshot(),
-          updatedAt: timestamp,
-        };
+        const localSnapshot = { ...buildSnapshot(), updatedAt: timestamp };
+        const { data, error: userError } = await supabase.auth.getUser();
+        if (userError) throw userError;
+        const remoteSnapshot = data.user?.user_metadata?.app_state as Partial<CloudSnapshot> | undefined;
+        const snapshot = remoteSnapshot
+          ? mergeCloudSnapshots(localSnapshot, remoteSnapshot)
+          : localSnapshot;
 
         const { error } = await supabase.auth.updateUser({
           data: { app_state: snapshot },
@@ -291,9 +312,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   useEffect(() => {
     if (!syncReady) return;
-    const generated = buildRecurringInstances(transactions);
-    if (generated.length > 0) {
-      setTransactions(prev => [...generated, ...prev]);
+    const { generated, obsoleteIds } = buildRecurringInstances(transactions);
+    if (generated.length > 0 || obsoleteIds.length > 0) {
+      setTransactions(prev => [
+        ...generated,
+        ...prev.filter(transaction => !obsoleteIds.includes(transaction.id)),
+      ]);
     }
   }, [transactions, syncReady, buildRecurringInstances]);
 
@@ -709,6 +733,35 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     });
   }, [activeMember, appendAuditLog]);
 
+  const clearAllData = useCallback(async () => {
+    const clearedSnapshot: CloudSnapshot = {
+      transactions: [],
+      categories: DEFAULT_CATEGORIES,
+      budgets: [],
+      goals: [],
+      members: [DEFAULT_MEMBER],
+      notifications: [],
+      auditLogs: [],
+      settings: defaultSettings,
+      updatedAt: new Date().toISOString(),
+    };
+
+    const { error } = await supabase.auth.updateUser({
+      data: { app_state: clearedSnapshot },
+    });
+    if (error) throw error;
+
+    setTransactions([]);
+    setCategories(DEFAULT_CATEGORIES);
+    setBudgets([]);
+    setGoals([]);
+    setMembers([DEFAULT_MEMBER]);
+    setNotifications([]);
+    setAuditLogs([]);
+    setSettings(defaultSettings);
+    setLastSyncedAt(clearedSnapshot.updatedAt);
+  }, []);
+
   return (
     <AppContext.Provider value={{
       transactions, categories, budgets, goals, members, notifications, auditLogs, settings,
@@ -725,6 +778,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       addNotification, markNotificationRead, clearNotifications,
       updateSettings,
       applySnapshot,
+      clearAllData,
       syncStatus,
       lastSyncedAt,
     }}>
