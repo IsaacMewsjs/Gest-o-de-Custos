@@ -15,18 +15,22 @@ const Auth: React.FC = () => {
   const [success, setSuccess] = useState('');
   const [loading, setLoading] = useState(false);
   
-  const { isPasswordRecovery, configurationError, login, signup, resetPassword, updatePassword, logout } = useAuth();
+  const { isPasswordRecovery, passwordRecoveryError, configurationError, login, signup, resetPassword, updatePassword, logout } = useAuth();
   const activeScreen = isPasswordRecovery ? 'update' : screen;
   const isLogin = activeScreen === 'login';
   const isSignup = activeScreen === 'signup';
 
   useEffect(() => {
-    if (isPasswordRecovery) {
+    if (passwordRecoveryError) {
+      setScreen('login');
+      setError(passwordRecoveryError);
+      setSuccess('');
+    } else if (isPasswordRecovery) {
       setScreen('update');
       setError('');
       setSuccess('');
     }
-  }, [isPasswordRecovery]);
+  }, [isPasswordRecovery, passwordRecoveryError]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

@@ -39,7 +39,13 @@ Você já tem:
 2. Ative "Email" (deve estar habilitado por padrão)
 3. Vá para **Authentication** > **Email Templates**
 4. Customize as templates se desejar
-5. Em **Authentication** > **URL Configuration**, adicione a URL do app em **Redirect URLs** (por exemplo, `http://localhost:5173` durante o desenvolvimento e a URL publicada em produção). O link de recuperação retorna para essa mesma origem.
+5. Em **Authentication** > **URL Configuration**, defina a URL publicada como **Site URL** e adicione a rota completa de recuperação em **Redirect URLs**:
+   - `http://localhost:5173/reset-password`
+   - `https://pmoney.com.br/reset-password`
+   - `https://www.pmoney.com.br/reset-password` (somente se o site também aceitar o endereço com `www`)
+   Se também usar URLs de preview da Vercel, adicione-as conforme necessário. O link de recuperação agora retorna para `/reset-password`, onde o aplicativo exibe o formulário de nova senha.
+
+6. Na Vercel, crie a variável de ambiente `VITE_APP_URL` para o ambiente **Production** com o valor `https://pmoney.com.br`. Depois de salvar a variável, faça um novo deploy. Essa variável evita que o e-mail use acidentalmente uma URL de preview.
 
 ### 3. Configurar RLS (Row Level Security)
 
