@@ -39,6 +39,7 @@ Você já tem:
 2. Ative "Email" (deve estar habilitado por padrão)
 3. Vá para **Authentication** > **Email Templates**
 4. Customize as templates se desejar
+5. Em **Authentication** > **URL Configuration**, adicione a URL do app em **Redirect URLs** (por exemplo, `http://localhost:5173` durante o desenvolvimento e a URL publicada em produção). O link de recuperação retorna para essa mesma origem.
 
 ### 3. Configurar RLS (Row Level Security)
 

@@ -31,7 +31,7 @@ type Page =
   | 'settings';
 
 const AppContent: React.FC = () => {
-  const { isAuthenticated, loading } = useAuth();
+  const { isAuthenticated, isPasswordRecovery, loading } = useAuth();
   const { settings, updateSettings, dataReady, syncStatus, syncError } = useApp();
   const [page, setPage] = useState<Page>('dashboard');
   const [showOnboarding, setShowOnboarding] = useState(false);
@@ -78,6 +78,10 @@ const AppContent: React.FC = () => {
     );
   }
 
+  if (!isAuthenticated || isPasswordRecovery) {
+    return <Auth />;
+  }
+
   if (isAuthenticated && !dataReady && syncStatus === 'syncing') {
     return (
       <div style={{
@@ -108,13 +112,16 @@ const AppContent: React.FC = () => {
         <div>
           <div>Não foi possível carregar seus dados. Verifique sua conexão e recarregue a página.</div>
           {syncError && <div style={{ marginTop: 8, fontSize: 12 }}>{syncError}</div>}
+          <button
+            className="btn btn-primary"
+            style={{ marginTop: 16 }}
+            onClick={() => window.location.reload()}
+          >
+            Tentar novamente
+          </button>
         </div>
       </div>
     );
-  }
-
-  if (!isAuthenticated) {
-    return <Auth />;
   }
 
   const pageLoader = (

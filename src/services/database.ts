@@ -17,17 +17,63 @@ const withOwner = (ownerId: string, item: Record<string, unknown>) => ({
   owner_id: ownerId,
 });
 
+const describeDatabaseError = (table: string, operation: string, error: unknown): Error => {
+  const details = error && typeof error === 'object'
+    ? error as { code?: string; message?: string; details?: string; hint?: string }
+    : {};
+  const message = [details.code, details.message, details.details, details.hint]
+    .filter(Boolean)
+    .join(' | ') || 'Erro desconhecido';
+  return new Error(`Sincronização da tabela ${table} (${operation}) falhou: ${message}`);
+};
+
+const withTimeout = async <T,>(promise: Promise<T>, timeoutMs: number, message: string): Promise<T> => {
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<never>((_, reject) => {
+    timeoutId = setTimeout(() => reject(new Error(message)), timeoutMs);
+  });
+
+  try {
+    return await Promise.race([promise, timeout]);
+  } finally {
+    if (timeoutId !== undefined) clearTimeout(timeoutId);
+  }
+};
+
 const syncTable = async (table: string, ownerId: string, rows: Record<string, unknown>[]) => {
-  const { error: deleteError } = await supabase.from(table).delete().eq('owner_id', ownerId);
-  if (deleteError) throw deleteError;
-  if (rows.length === 0) return;
-  const { error } = await supabase.from(table).insert(rows.map(row => withOwner(ownerId, row)));
-  if (error) throw error;
+  const rowsWithOwner = rows.map(row => withOwner(ownerId, row));
+
+  if (rowsWithOwner.length > 0) {
+    const { error: upsertError } = await supabase
+      .from(table)
+      .upsert(rowsWithOwner, { onConflict: 'id' });
+    if (upsertError) throw describeDatabaseError(table, 'salvar', upsertError);
+  }
+
+  const { data: existingRows, error: existingError } = await supabase
+    .from(table)
+    .select('id')
+    .eq('owner_id', ownerId);
+  if (existingError) throw describeDatabaseError(table, 'consultar', existingError);
+
+  const currentIds = new Set(rows.map(row => String(row.id)));
+  const staleIds = (existingRows ?? [])
+    .map(row => String(row.id))
+    .filter(id => !currentIds.has(id));
+
+  if (staleIds.length > 0) {
+    const { error: deleteError } = await supabase
+      .from(table)
+      .delete()
+      .eq('owner_id', ownerId)
+      .in('id', staleIds);
+    if (deleteError) throw describeDatabaseError(table, 'remover registros antigos', deleteError);
+  }
 };
 
 export const relationalDataService = {
   async loadAll(ownerId: string): Promise<RelationalSnapshot> {
-    const [transactions, categories, budgets, goals, members, notifications, auditLogs, settings] = await Promise.all([
+    const [transactions, categories, budgets, goals, members, notifications, auditLogs, settings] = await withTimeout(Promise.all([
       supabase.from('transactions').select('*').eq('owner_id', ownerId),
       supabase.from('categories').select('*').eq('owner_id', ownerId),
       supabase.from('budgets').select('*').eq('owner_id', ownerId),
@@ -36,7 +82,7 @@ export const relationalDataService = {
       supabase.from('notifications').select('*').eq('owner_id', ownerId),
       supabase.from('audit_logs').select('*').eq('owner_id', ownerId),
       supabase.from('settings').select('*').eq('owner_id', ownerId).maybeSingle(),
-    ]);
+    ]), 15000, 'Tempo esgotado ao carregar seus dados. Verifique a conexão e as configurações do Supabase.');
     const result = [transactions, categories, budgets, goals, members, notifications, auditLogs, settings];
     const failed = result.find(query => query.error);
     if (failed?.error) throw failed.error;
@@ -48,6 +94,8 @@ export const relationalDataService = {
         memberId: row.member_id,
         parentTransactionId: row.parent_transaction_id,
         isRecurringGenerated: row.is_recurring_generated,
+        recurrenceDuration: row.recurrence_duration,
+        recurrenceEndDate: row.recurrence_end_date,
         approvalRequestedAt: row.approval_requested_at,
         approvedAt: row.approved_at,
         approvedBy: row.approved_by,
@@ -66,7 +114,7 @@ export const relationalDataService = {
 
   async saveAll(ownerId: string, snapshot: RelationalSnapshot) {
     await Promise.all([
-      syncTable('transactions', ownerId, snapshot.transactions.map(item => ({ id: item.id, type: item.type, amount: item.amount, category_id: item.categoryId, description: item.description, date: item.date, member_id: item.memberId, recurrence: item.recurrence, notes: item.notes, parent_transaction_id: item.parentTransactionId, is_recurring_generated: item.isRecurringGenerated ?? false, status: item.status ?? 'approved', approval_requested_at: item.approvalRequestedAt, approved_at: item.approvedAt, approved_by: item.approvedBy, created_at: item.createdAt, updated_at: item.updatedAt }))),
+      syncTable('transactions', ownerId, snapshot.transactions.map(item => ({ id: item.id, type: item.type, amount: item.amount, category_id: item.categoryId, description: item.description, date: item.date, member_id: item.memberId, recurrence: item.recurrence, recurrence_duration: item.recurrenceDuration, recurrence_end_date: item.recurrenceEndDate, notes: item.notes, parent_transaction_id: item.parentTransactionId, is_recurring_generated: item.isRecurringGenerated ?? false, status: item.status ?? 'approved', approval_requested_at: item.approvalRequestedAt, approved_at: item.approvedAt, approved_by: item.approvedBy, created_at: item.createdAt, updated_at: item.updatedAt }))),
       syncTable('categories', ownerId, snapshot.categories.map(item => ({ id: item.id, name: item.name, icon: item.icon, color: item.color, type: item.type, is_default: item.isDefault }))),
       syncTable('budgets', ownerId, snapshot.budgets.map(item => ({ id: item.id, category_id: item.categoryId, amount: item.amount, month: item.month, year: item.year }))),
       syncTable('goals', ownerId, snapshot.goals.map(item => ({ id: item.id, name: item.name, target_amount: item.targetAmount, current_amount: item.currentAmount, deadline: item.deadline, icon: item.icon, color: item.color, created_at: item.createdAt, completed_at: item.completedAt }))),

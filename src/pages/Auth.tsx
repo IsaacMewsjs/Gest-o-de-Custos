@@ -1,27 +1,96 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
-import { ArrowRight, BarChart3, Lock, LogIn, Mail, ShieldCheck, Smartphone, Sparkles, UserPlus } from 'lucide-react';
+import { ArrowLeft, ArrowRight, BarChart3, KeyRound, Lock, LogIn, Mail, ShieldCheck, Smartphone, Sparkles, UserPlus } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
+type AuthScreen = 'login' | 'signup' | 'forgot' | 'update';
+
 const Auth: React.FC = () => {
-  const [isLogin, setIsLogin] = useState(true);
+  const [screen, setScreen] = useState<AuthScreen>('login');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [displayName, setDisplayName] = useState('');
   const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
   const [loading, setLoading] = useState(false);
   
-  const { login, signup } = useAuth();
+  const { isPasswordRecovery, configurationError, login, signup, resetPassword, updatePassword, logout } = useAuth();
+  const activeScreen = isPasswordRecovery ? 'update' : screen;
+  const isLogin = activeScreen === 'login';
+  const isSignup = activeScreen === 'signup';
+
+  useEffect(() => {
+    if (isPasswordRecovery) {
+      setScreen('update');
+      setError('');
+      setSuccess('');
+    }
+  }, [isPasswordRecovery]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
+    if (activeScreen === 'forgot') {
+      if (!email) {
+        setError('Informe seu e-mail para receber o link de recuperação.');
+        return;
+      }
+
+      setError('');
+      setSuccess('');
+      setLoading(true);
+
+      try {
+        await resetPassword(email);
+        setSuccess('Se esse e-mail estiver cadastrado, enviaremos um link para redefinir sua senha.');
+      } catch (err: any) {
+        setError(err.message || 'Não foi possível enviar o e-mail de recuperação.');
+      } finally {
+        setLoading(false);
+      }
+      return;
+    }
+
+    if (activeScreen === 'update') {
+      if (!password || !confirmPassword) {
+        setError('Preencha os dois campos de senha.');
+        return;
+      }
+      if (password.length < 6) {
+        setError('A senha deve ter pelo menos 6 caracteres.');
+        return;
+      }
+      if (password !== confirmPassword) {
+        setError('As senhas não coincidem.');
+        return;
+      }
+
+      setError('');
+      setSuccess('');
+      setLoading(true);
+
+      try {
+        await updatePassword(password);
+        await logout();
+        setScreen('login');
+        setPassword('');
+        setConfirmPassword('');
+        setSuccess('Senha atualizada com sucesso. Agora você já pode entrar.');
+      } catch (err: any) {
+        setError(err.message || 'Não foi possível atualizar sua senha.');
+      } finally {
+        setLoading(false);
+      }
+      return;
+    }
+
     if (!email || !password) {
       setError('Por favor, preencha todos os campos.');
       return;
     }
 
-    if (!isLogin && !displayName) {
+    if (isSignup && !displayName) {
       setError('Por favor, insira seu nome.');
       return;
     }
@@ -126,13 +195,19 @@ const Auth: React.FC = () => {
           <div className="auth-form-card card">
             <div className="auth-form-header">
               <div className="auth-form-note">
-                <ArrowRight size={14} /> Acesse sua conta
+                {activeScreen === 'update' ? <><KeyRound size={14} /> Nova senha</> : <><ArrowRight size={14} /> Acesse sua conta</>}
               </div>
-              <h2>{isLogin ? 'Entrar' : 'Criar conta'}</h2>
+              <h2>
+                {isLogin ? 'Entrar' : isSignup ? 'Criar conta' : activeScreen === 'forgot' ? 'Recuperar senha' : 'Definir nova senha'}
+              </h2>
               <p className="text-muted" style={{ fontSize: '0.95rem' }}>
                 {isLogin
                   ? 'Retome seu painel e continue acompanhando as finanças da sua igreja.'
-                  : 'Crie seu acesso para começar a registrar entradas, saídas e dízimos.'}
+                  : isSignup
+                    ? 'Crie seu acesso para começar a registrar entradas, saídas e dízimos.'
+                    : activeScreen === 'forgot'
+                      ? 'Informe seu e-mail e enviaremos as instruções para recuperar o acesso.'
+                      : 'Escolha uma nova senha para voltar a acessar sua conta.'}
               </p>
             </div>
 
@@ -153,10 +228,48 @@ const Auth: React.FC = () => {
               >
                 {error}
               </motion.div>
+              )}
+
+            {success && (
+              <motion.div
+                initial={{ opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: 'auto' }}
+                style={{
+                  padding: '12px 14px',
+                  background: 'rgba(34, 197, 94, 0.1)',
+                  color: 'var(--green, #16a34a)',
+                  borderRadius: '14px',
+                  fontSize: '0.875rem',
+                  marginBottom: '18px',
+                  textAlign: 'left',
+                  border: '1px solid rgba(34, 197, 94, 0.16)',
+                }}
+              >
+                {success}
+              </motion.div>
+            )}
+
+            {configurationError && (
+              <motion.div
+                initial={{ opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: 'auto' }}
+                style={{
+                  padding: '12px 14px',
+                  background: 'rgba(239, 68, 68, 0.1)',
+                  color: 'var(--red)',
+                  borderRadius: '14px',
+                  fontSize: '0.875rem',
+                  marginBottom: '18px',
+                  textAlign: 'left',
+                  border: '1px solid rgba(239, 68, 68, 0.16)',
+                }}
+              >
+                {configurationError}
+              </motion.div>
             )}
 
             <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-              {!isLogin && (
+              {isSignup && (
                 <div className="form-group" style={{ marginBottom: 0 }}>
                   <label className="form-label" style={{ fontSize: '0.875rem' }}>Nome</label>
                   <div style={{ position: 'relative' }}>
@@ -179,7 +292,7 @@ const Auth: React.FC = () => {
                 </div>
               )}
 
-              <div className="form-group" style={{ marginBottom: 0 }}>
+              {activeScreen !== 'update' && <div className="form-group" style={{ marginBottom: 0 }}>
                 <label className="form-label" style={{ fontSize: '0.875rem' }}>E-mail</label>
                 <div style={{ position: 'relative' }}>
                   <div style={{
@@ -198,9 +311,9 @@ const Auth: React.FC = () => {
                     disabled={loading}
                   />
                 </div>
-              </div>
+              </div>}
 
-              <div className="form-group" style={{ marginBottom: 0 }}>
+              {activeScreen !== 'forgot' && <div className="form-group" style={{ marginBottom: 0 }}>
                 <label className="form-label" style={{ fontSize: '0.875rem' }}>Senha</label>
                 <div style={{ position: 'relative' }}>
                   <div style={{
@@ -219,44 +332,106 @@ const Auth: React.FC = () => {
                     disabled={loading}
                   />
                 </div>
-              </div>
+              </div>}
+
+              {activeScreen === 'update' && <div className="form-group" style={{ marginBottom: 0 }}>
+                <label className="form-label" style={{ fontSize: '0.875rem' }}>Confirmar senha</label>
+                <div style={{ position: 'relative' }}>
+                  <div style={{
+                    position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)',
+                    color: 'var(--text-secondary)'
+                  }}>
+                    <Lock size={18} />
+                  </div>
+                  <input
+                    type="password"
+                    className="form-input"
+                    style={{ paddingLeft: '40px' }}
+                    placeholder="••••••••"
+                    value={confirmPassword}
+                    onChange={e => setConfirmPassword(e.target.value)}
+                    disabled={loading}
+                  />
+                </div>
+              </div>}
 
               <button
                 type="submit"
                 className="btn btn-primary"
                 style={{ marginTop: '8px', width: '100%', justifyContent: 'center', height: '50px', opacity: loading ? 0.7 : 1 }}
-                disabled={loading}
+                disabled={loading || Boolean(configurationError)}
               >
                 {loading ? (
                   <>
                     <span style={{ display: 'inline-block', animation: 'spin 1s linear infinite' }}>⏳</span> Processando...
                   </>
                 ) : (
-                  isLogin ? <><LogIn size={18} /> Entrar</> : <><UserPlus size={18} /> Cadastrar</>
+                  isLogin ? <><LogIn size={18} /> Entrar</> : isSignup ? <><UserPlus size={18} /> Cadastrar</> : activeScreen === 'forgot' ? <><Mail size={18} /> Enviar link</> : <><KeyRound size={18} /> Atualizar senha</>
                 )}
               </button>
             </form>
 
             <div className="auth-prompt">
-              {isLogin ? 'Ainda não tem uma conta? Crie o acesso em poucos segundos.' : 'Já tem uma conta? Faça login e volte para o painel.'}
+              {activeScreen === 'login' && (
+                <>
+                  Ainda não tem uma conta? Crie o acesso em poucos segundos.
+                  <button
+                    onClick={() => { setScreen('signup'); setError(''); setSuccess(''); }}
+                    style={{
+                      background: 'none', border: 'none', color: 'var(--blue)', cursor: loading ? 'not-allowed' : 'pointer',
+                      fontWeight: 700, fontSize: '0.9rem', padding: 0, marginLeft: 8, opacity: loading ? 0.6 : 1,
+                    }}
+                    disabled={loading}
+                  >
+                    Criar conta
+                  </button>
+                </>
+              )}
+              {activeScreen === 'signup' && (
+                <>
+                  Já tem uma conta? Faça login e volte para o painel.
+                  <button
+                    onClick={() => { setScreen('login'); setError(''); setSuccess(''); }}
+                    style={{
+                      background: 'none', border: 'none', color: 'var(--blue)', cursor: loading ? 'not-allowed' : 'pointer',
+                      fontWeight: 700, fontSize: '0.9rem', padding: 0, marginLeft: 8, opacity: loading ? 0.6 : 1,
+                    }}
+                    disabled={loading}
+                  >
+                    Entrar
+                  </button>
+                </>
+              )}
+              {activeScreen === 'forgot' && (
+                <button
+                  onClick={() => { setScreen('login'); setError(''); setSuccess(''); }}
+                  style={{
+                    background: 'none', border: 'none', color: 'var(--blue)', cursor: loading ? 'not-allowed' : 'pointer',
+                    fontWeight: 700, fontSize: '0.9rem', padding: 0, opacity: loading ? 0.6 : 1,
+                  }}
+                  disabled={loading}
+                >
+                  <ArrowLeft size={14} style={{ verticalAlign: 'middle', marginRight: 5 }} /> Voltar para o login
+                </button>
+              )}
+              {activeScreen === 'update' && (
+                <span>Depois de atualizar, você poderá entrar normalmente com a nova senha.</span>
+              )}
+            </div>
+
+            {activeScreen === 'login' && (
               <button
-                onClick={() => setIsLogin(!isLogin)}
+                type="button"
+                onClick={() => { setScreen('forgot'); setError(''); setSuccess(''); }}
                 style={{
-                  background: 'none',
-                  border: 'none',
-                  color: 'var(--blue)',
-                  cursor: loading ? 'not-allowed' : 'pointer',
-                  fontWeight: 700,
-                  fontSize: '0.9rem',
-                  padding: 0,
-                  marginLeft: 8,
-                  opacity: loading ? 0.6 : 1,
+                  background: 'none', border: 'none', color: 'var(--blue)', cursor: loading ? 'not-allowed' : 'pointer',
+                  fontWeight: 700, fontSize: '0.9rem', padding: 0, marginTop: 12, opacity: loading ? 0.6 : 1,
                 }}
                 disabled={loading}
               >
-                {isLogin ? 'Criar conta' : 'Entrar'}
+                Esqueci minha senha?
               </button>
-            </div>
+            )}
           </div>
         </motion.section>
       </div>

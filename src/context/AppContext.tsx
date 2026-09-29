@@ -65,7 +65,14 @@ interface AppContextType {
   lastSyncedAt: string | null;
 }
 
-const AppContext = createContext<AppContextType | null>(null);
+// Keep the context identity stable across Vite Fast Refresh updates. Without
+// this, an HMR reconnect can leave the provider from the previous module
+// instance paired with a hook from the new instance.
+const appContextStore = globalThis as typeof globalThis & {
+  __igrejaAppContext?: React.Context<AppContextType | null>;
+};
+const AppContext = appContextStore.__igrejaAppContext ?? createContext<AppContextType | null>(null);
+appContextStore.__igrejaAppContext = AppContext;
 
 const normalizeDashboardWidgets = (widgets?: DashboardWidgetPreference[]): DashboardWidgetPreference[] => {
   const byId = new Map((widgets ?? []).map(widget => [widget.id, widget]));
@@ -173,6 +180,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         while (cursor <= now) {
           cursor = getNextRecurringDate(cursor, source.recurrence);
         }
+
+        if (source.recurrenceEndDate && cursor > new Date(source.recurrenceEndDate)) return;
 
         generated.push({
           ...source,

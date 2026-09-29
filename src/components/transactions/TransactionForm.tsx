@@ -26,11 +26,20 @@ const EMPTY_FORM = {
   date: new Date().toISOString().slice(0, 10),
   memberId: '',
   recurrence: 'none' as RecurrenceType,
+  recurrenceDuration: '',
   notes: '',
 };
 
 const toSafeIsoDate = (dateValue: string): string => {
   return new Date(`${dateValue}T12:00:00.000Z`).toISOString();
+};
+
+const getRecurrenceEndDate = (dateValue: string, recurrence: RecurrenceType, duration: number): string | undefined => {
+  const endDate = new Date(`${dateValue}T12:00:00.000Z`);
+  if (recurrence === 'weekly') endDate.setDate(endDate.getDate() + duration * 7);
+  if (recurrence === 'monthly') endDate.setMonth(endDate.getMonth() + duration);
+  if (recurrence === 'yearly') endDate.setFullYear(endDate.getFullYear() + duration);
+  return recurrence === 'none' ? undefined : endDate.toISOString();
 };
 
 const TransactionForm: React.FC<TransactionFormProps> = ({
@@ -50,6 +59,7 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
         date: editingTransaction.date.slice(0, 10),
         memberId: editingTransaction.memberId,
         recurrence: editingTransaction.recurrence,
+        recurrenceDuration: editingTransaction.recurrenceDuration?.toString() ?? '',
         notes: editingTransaction.notes ?? '',
       });
     } else {
@@ -76,6 +86,8 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
     if (!form.categoryId) e.categoryId = 'Selecione uma categoria';
     if (!form.description.trim()) e.description = 'Informe uma descrição';
     if (!form.date) e.date = 'Informe a data';
+    if (form.recurrence !== 'none' && (!form.recurrenceDuration || Number(form.recurrenceDuration) < 1))
+      e.recurrenceDuration = 'Informe uma validade maior que zero';
     setErrors(e);
     return Object.keys(e).length === 0;
   };
@@ -92,6 +104,8 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
       date: toSafeIsoDate(form.date),
       memberId: form.memberId || settings.activeMemberId,
       recurrence: form.recurrence,
+      recurrenceDuration: form.recurrence === 'none' ? undefined : Number(form.recurrenceDuration),
+      recurrenceEndDate: getRecurrenceEndDate(form.date, form.recurrence, Number(form.recurrenceDuration)),
       notes: form.notes.trim() || undefined,
     };
 
@@ -226,7 +240,14 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
           <select
             className="form-select"
             value={form.recurrence}
-            onChange={e => set('recurrence', e.target.value as any)}
+            onChange={e => {
+              const recurrence = e.target.value as RecurrenceType;
+              setForm(prev => ({
+                ...prev,
+                recurrence,
+                recurrenceDuration: recurrence === 'none' ? '' : prev.recurrenceDuration || '1',
+              }));
+            }}
           >
             <option value="none">Nenhuma (único)</option>
             <option value="weekly">Semanal</option>
@@ -234,6 +255,26 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
             <option value="yearly">Anual</option>
           </select>
         </div>
+
+        {form.recurrence !== 'none' && (
+          <div className="form-group">
+            <label className="form-label">Validade da recorrência</label>
+            <input
+              className="form-select"
+              type="text"
+              inputMode="numeric"
+              pattern="[0-9]*"
+              minLength={1}
+              value={form.recurrenceDuration}
+              onChange={e => set('recurrenceDuration', e.target.value.replace(/\D/g, ''))}
+              placeholder="Digite a quantidade"
+            />
+            <span className="text-muted text-xs">
+              {form.recurrence === 'weekly' ? 'semanas' : form.recurrence === 'monthly' ? 'meses' : 'anos'}
+            </span>
+            {errors.recurrenceDuration && <span className="text-red text-xs">{errors.recurrenceDuration}</span>}
+          </div>
+        )}
 
         {/* Notes */}
         <div className="form-group">

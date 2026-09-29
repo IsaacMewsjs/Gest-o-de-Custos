@@ -35,6 +35,8 @@ create table if not exists transactions (
   date timestamptz not null,
   member_id text not null,
   recurrence text not null default 'none',
+  recurrence_duration integer,
+  recurrence_end_date timestamptz,
   notes text,
   parent_transaction_id text,
   is_recurring_generated boolean not null default false,
@@ -45,6 +47,9 @@ create table if not exists transactions (
   created_at timestamptz not null,
   updated_at timestamptz not null
 );
+
+alter table transactions add column if not exists recurrence_duration integer;
+alter table transactions add column if not exists recurrence_end_date timestamptz;
 
 create table if not exists budgets (
   id text primary key,

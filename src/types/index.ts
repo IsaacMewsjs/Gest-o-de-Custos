@@ -36,6 +36,8 @@ export interface Transaction {
   date: string; // ISO string
   memberId: string;
   recurrence: RecurrenceType;
+  recurrenceDuration?: number;
+  recurrenceEndDate?: string;
   notes?: string;
   parentTransactionId?: string;
   isRecurringGenerated?: boolean;
